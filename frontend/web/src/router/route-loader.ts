@@ -260,7 +260,7 @@ export class RouteTransformer {
     return {
       path: this.routerPath(route.path, depth),
       name: route.name,
-      redirect: children.length > 0 ? { name: children[0]?.name } : undefined,
+      redirect: route.redirect || (children.length > 0 ? { name: children[0]?.name } : undefined),
       component:
         route.component &&
         ![ROUTE_COMPONENT_NESTED_PARENT, ROUTE_COMPONENT_LAYOUT].includes(String(route.component))

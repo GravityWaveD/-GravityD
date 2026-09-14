@@ -1,60 +1,70 @@
-import { request } from "@utils";
-
-const API_PATH = "/system/notice";
+import { insforge } from "@/utils/insforge";
+import { ok, pageOf, rangeOf, unwrap } from "@/utils/insforge-api";
 
 const NoticeAPI = {
-  listNotice(query: NoticePageQuery) {
-    return request<ApiResponse<PageResult<NoticeTable>>>({
-      url: `${API_PATH}/list`,
-      method: "get",
-      params: query,
-    });
+  async listNotice(query: NoticePageQuery) {
+    const { pageNo, pageSize } = rangeOf(query.page_no, query.page_size);
+    let builder = insforge.database.from("sys_notice").select("*");
+    if (query.notice_title) builder = builder.ilike("notice_title", `%${query.notice_title}%`);
+    if (query.notice_type) builder = builder.eq("notice_type", query.notice_type);
+    if (query.status !== undefined && query.status !== null && query.status !== ("" as unknown as number)) {
+      builder = builder.eq("status", query.status);
+    }
+    const rows = ((unwrap(await builder) as NoticeTable[]) || []).sort((a, b) => (b.id ?? 0) - (a.id ?? 0));
+    return ok(pageOf(rows.slice((pageNo - 1) * pageSize, pageNo * pageSize), rows.length, pageNo, pageSize));
   },
 
-  listNoticeAvailable() {
-    return request<ApiResponse<NoticeTable[]>>({
-      url: `${API_PATH}/available`,
-      method: "get",
-    });
+  async listNoticeAvailable() {
+    const rows =
+      (unwrap(await insforge.database.from("sys_notice").select("*").eq("status", 1)) as NoticeTable[]) || [];
+    return ok(rows);
   },
 
-  detailNotice(query: number) {
-    return request<ApiResponse<NoticeTable>>({
-      url: `${API_PATH}/detail/${query}`,
-      method: "get",
-    });
+  async detailNotice(id: number) {
+    const rows = unwrap(await insforge.database.from("sys_notice").select("*").eq("id", id)) as NoticeTable[];
+    if (!rows?.[0]) throw new Error("公告不存在");
+    return ok(rows[0]);
   },
 
-  createNotice(body: NoticeForm) {
-    return request<ApiResponse>({
-      url: `${API_PATH}/create`,
-      method: "post",
-      data: body,
-    });
+  async createNotice(body: NoticeForm) {
+    unwrap(
+      await insforge.database.from("sys_notice").insert([
+        {
+          notice_title: body.notice_title,
+          notice_type: body.notice_type || "1",
+          notice_content: body.notice_content,
+          status: body.status ?? 0,
+          description: body.description,
+        },
+      ])
+    );
+    return ok(null, "创建成功", true);
   },
 
-  updateNotice(id: number, body: NoticeForm) {
-    return request<ApiResponse>({
-      url: `${API_PATH}/update/${id}`,
-      method: "put",
-      data: body,
-    });
+  async updateNotice(id: number, body: NoticeForm) {
+    unwrap(
+      await insforge.database
+        .from("sys_notice")
+        .update({
+          notice_title: body.notice_title,
+          notice_type: body.notice_type,
+          notice_content: body.notice_content,
+          status: body.status,
+          description: body.description,
+        })
+        .eq("id", id)
+    );
+    return ok(null, "更新成功", true);
   },
 
-  deleteNotice(body: number[]) {
-    return request<ApiResponse>({
-      url: `${API_PATH}/delete`,
-      method: "delete",
-      data: body,
-    });
+  async deleteNotice(body: number[]) {
+    unwrap(await insforge.database.from("sys_notice").delete().in("id", body));
+    return ok(null, "删除成功", true);
   },
 
-  batchNotice(body: BatchType) {
-    return request<ApiResponse>({
-      url: `${API_PATH}/status/batch`,
-      method: "patch",
-      data: body,
-    });
+  async batchNotice(body: BatchType) {
+    unwrap(await insforge.database.from("sys_notice").update({ status: body.status }).in("id", body.ids));
+    return ok(null, "更新成功", true);
   },
 };
 

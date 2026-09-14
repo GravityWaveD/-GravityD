@@ -49,6 +49,12 @@ interface ImportMetaEnv {
 
   /** 应用版本号 */
   VITE_VERSION: string;
+
+  /** InsForge 自托管地址 */
+  VITE_INSFORGE_URL: string;
+
+  /** InsForge 匿名密钥 */
+  VITE_INSFORGE_ANON_KEY: string;
 }
 
 // Vite 环境变量类型提示

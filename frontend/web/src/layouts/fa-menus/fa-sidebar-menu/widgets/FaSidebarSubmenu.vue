@@ -2,14 +2,14 @@
   <template v-for="(item, index) in filteredMenuItems" :key="getUniqueKey(item, index)">
     <ElSubMenu v-if="hasChildren(item)" :index="item.path || item.meta.title" :level="level">
       <template #title>
-        <div class="menu-icon flex items-center justify-center">
+        <div class="menu-icon flex items-center justify-center" @click.stop="goCatalog(item)">
           <FaMenuRouteIcon
             :icon="item.meta.icon"
             :color="theme?.iconColor"
             :style="{ color: theme.iconColor }"
           />
         </div>
-        <span class="menu-name">
+        <span class="menu-name" @click.stop="goCatalog(item)">
           {{ formatMenuTitle(item.meta.title) }}
         </span>
         <div
@@ -116,6 +116,11 @@ const filteredMenuItems = computed(() => filterRoutes(props.list));
 const goPage = (item: AppRouteRecord): void => {
   closeMenu();
   handleMenuJump(item);
+};
+
+const goCatalog = (item: AppRouteRecord): void => {
+  closeMenu();
+  handleMenuJump(item, true);
 };
 
 /**

@@ -1,139 +1,302 @@
-import { request } from "@utils";
 import { type MenuTable, type MenuForm } from "@/api/module_system/menu";
+import { insforge, insforgeRequest, toLoginEmail } from "@/utils/insforge";
+import { Auth } from "@/utils/auth";
+import { ApiStatus, HttpError } from "@/utils/http";
+import { buildTree, ok, pageOf, rangeOf, unwrap } from "@/utils/insforge-api";
+import { touchOnline } from "@/utils/insforge-presence";
 
-const API_PATH = "/system/user";
+type ProfileRow = UserInfo & { id: string };
+
+function jwtSub(token: string): string | null {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return payload.sub || payload.user_id || null;
+  } catch {
+    return null;
+  }
+}
+
+async function currentUserId(): Promise<string> {
+  const { data } = await insforge.auth.getCurrentUser();
+  if (data?.user?.id) return data.user.id;
+  const sub = jwtSub(Auth.getAccessToken());
+  if (sub) return sub;
+  throw new HttpError("未登录或会话已失效", ApiStatus.unauthorized);
+}
+
+async function loadMenusForUser(profile: ProfileRow, roleIds: number[]): Promise<MenuTable[]> {
+  let query = insforge.database.from("sys_menu").select("*").eq("status", 0);
+  if (!profile.is_superuser) {
+    if (!roleIds.length) return [];
+    const links = unwrap(
+      await insforge.database.from("sys_role_menus").select("menu_id").in("role_id", roleIds)
+    ) as { menu_id: number }[];
+    const ids = [...new Set(links.map((item) => item.menu_id))];
+    if (!ids.length) return [];
+    query = insforge.database.from("sys_menu").select("*").eq("status", 0).in("id", ids);
+  }
+  const rows = (unwrap(await query) as MenuTable[]) || [];
+  rows.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  return buildTree(rows);
+}
+
+async function hydrateUser(profile: ProfileRow): Promise<UserInfo> {
+  const roleLinks = unwrap(
+    await insforge.database.from("sys_user_roles").select("role_id").eq("user_id", profile.id)
+  ) as { role_id: number }[];
+  const roleIds = roleLinks.map((item) => item.role_id);
+  const roles = roleIds.length
+    ? ((unwrap(await insforge.database.from("sys_role").select("*").in("id", roleIds)) as roleSelectorType[]) || [])
+    : [];
+  let dept: deptTreeType | undefined;
+  if (profile.dept_id) {
+    const rows = unwrap(
+      await insforge.database.from("sys_dept").select("id,name,parent_id").eq("id", profile.dept_id)
+    ) as deptTreeType[];
+    dept = rows?.[0];
+  }
+  const menus = await loadMenusForUser(profile, roleIds);
+  let positions: positionSelectorType[] = [];
+  try {
+    const posLinks = unwrap(
+      await insforge.database.from("sys_user_positions").select("position_id").eq("user_id", profile.id)
+    ) as { position_id: number }[];
+    const positionIds = posLinks.map((item) => item.position_id);
+    positions = positionIds.length
+      ? ((unwrap(await insforge.database.from("sys_position").select("*").in("id", positionIds)) as positionSelectorType[]) ||
+        [])
+      : [];
+  } catch (error) {
+    console.warn("[positions]", error);
+  }
+  return {
+    ...profile,
+    email: profile.email,
+    dept,
+    dept_name: dept?.name,
+    roles: roles.map((role) => ({ ...role, menus: menus as MenuForm[] })),
+    role_ids: roles.map((role) => role.id!),
+    role_names: roles.map((role) => role.name!),
+    positions,
+    position_ids: positions.map((item) => item.id!),
+    position_names: positions.map((item) => item.name!),
+    menus,
+  };
+}
+
+async function fetchProfile(id: string | number): Promise<ProfileRow> {
+  const rows = unwrap(await insforge.database.from("profiles").select("*").eq("id", id)) as ProfileRow[];
+  if (!rows?.[0]) throw new Error("用户不存在");
+  return rows[0];
+}
 
 export const UserAPI = {
-  getCurrentUserInfo(checkDataScope?: boolean) {
-    return request<ApiResponse<UserInfo>>({
-      url: `${API_PATH}/current/info`,
-      method: "get",
-      params: checkDataScope === false ? { check_data_scope: false } : undefined,
-    });
+  async getCurrentUserInfo(_checkDataScope?: boolean) {
+    const id = await currentUserId();
+    const profile = await fetchProfile(id);
+    await insforge.database
+      .from("profiles")
+      .update({ last_login: new Date().toISOString() })
+      .eq("id", id);
+    void touchOnline(profile);
+    return ok(await hydrateUser(profile));
   },
 
-  uploadCurrentUserAvatar(body: FormData) {
-    return request<ApiResponse<UploadFilePath>>({
-      url: `/common/file/upload?upload_type=avatar`,
-      method: "post",
-      data: body,
-      headers: { "Content-Type": "multipart/form-data" },
-    });
+  async uploadCurrentUserAvatar(_body: FormData) {
+    throw new Error("第一期未迁移头像上传");
   },
 
-  updateCurrentUserInfo(body: InfoFormState) {
-    return request<ApiResponse<UserInfo>>({
-      url: `${API_PATH}/current/info/update`,
-      method: "put",
-      data: body,
-    });
+  async updateCurrentUserInfo(body: InfoFormState) {
+    const id = await currentUserId();
+    unwrap(
+      await insforge.database
+        .from("profiles")
+        .update({
+          name: body.name,
+          gender: body.gender,
+          mobile: body.mobile,
+          email: body.email,
+          avatar: body.avatar,
+          description: body.description,
+        })
+        .eq("id", id)
+        .select()
+    );
+    return ok(await hydrateUser(await fetchProfile(id)), "更新成功", true);
   },
 
-  changeCurrentUserPassword(body: PasswordFormState) {
-    return request<ApiResponse>({
-      url: `${API_PATH}/password/change`,
-      method: "put",
-      data: body,
-    });
+  async changeCurrentUserPassword(_body: PasswordFormState) {
+    throw new Error("请在 InsForge 控制台或登录页重置密码");
   },
 
-  resetUserPassword(id: number, body: ResetPasswordForm) {
-    return request<ApiResponse>({
-      url: `${API_PATH}/password/reset/${id}`,
-      method: "put",
-      data: body,
-    });
+  async resetUserPassword(_id: number, _body: ResetPasswordForm) {
+    throw new Error("第一期请在 InsForge 控制台重置密码");
   },
 
-  forgetPassword(body: ForgetPasswordForm) {
-    return request<ApiResponse>({
-      url: `${API_PATH}/password/forget`,
-      method: "post",
-      data: body,
-    });
+  async forgetPassword(_body: ForgetPasswordForm) {
+    throw new Error("第一期未开通找回密码邮件");
   },
 
-  register(body: RegisterForm) {
-    return request<ApiResponse>({
-      url: `${API_PATH}/register`,
-      method: "post",
-      data: body,
-    });
+  async register(body: RegisterForm) {
+    const email = toLoginEmail(body.username);
+    const created = await insforgeRequest<{ user?: { id: string }; accessToken?: string | null }>(
+      "/api/auth/users?client_type=server",
+      {
+        method: "POST",
+        json: { email, password: body.password, name: body.name || body.username },
+      }
+    );
+    const id = created.user?.id;
+    if (!id) throw new Error("注册失败");
+    const depts = unwrap(await insforge.database.from("sys_dept").select("id").eq("code", "DEFAULT")) as {
+      id: number;
+    }[];
+    unwrap(
+      await insforge.database.from("profiles").insert([
+        {
+          id,
+          username: body.username,
+          name: body.name || body.username,
+          email,
+          status: 0,
+          dept_id: depts?.[0]?.id ?? null,
+          is_superuser: false,
+        },
+      ])
+    );
+    return ok(null, "注册成功", true);
   },
 
-  listUser(query: UserPageQuery) {
-    return request<ApiResponse<PageResult<UserInfo>>>({
-      url: `${API_PATH}/list`,
-      method: "get",
-      params: query,
-    });
+  async listUser(query: UserPageQuery) {
+    const { pageNo, pageSize } = rangeOf(query.page_no, query.page_size);
+    let builder = insforge.database.from("profiles").select("*");
+    if (query.username) builder = builder.ilike("username", `%${query.username}%`);
+    if (query.name) builder = builder.ilike("name", `%${query.name}%`);
+    if (query.email) builder = builder.ilike("email", `%${query.email}%`);
+    if (query.mobile) builder = builder.ilike("mobile", `%${query.mobile}%`);
+    if (query.status !== undefined && query.status !== null && query.status !== ("" as unknown as number)) {
+      builder = builder.eq("status", query.status);
+    }
+    if (query.dept_id) builder = builder.eq("dept_id", query.dept_id);
+    const rows = ((unwrap(await builder) as ProfileRow[]) || []).slice();
+    const total = rows.length;
+    const items = await Promise.all(
+      rows.slice((pageNo - 1) * pageSize, pageNo * pageSize).map((row) => hydrateUser(row))
+    );
+    return ok(pageOf(items, total, pageNo, pageSize));
   },
 
-  detailUser(id: number) {
-    return request<ApiResponse<UserInfo>>({
-      url: `${API_PATH}/detail/${id}`,
-      method: "get",
-    });
+  async detailUser(id: number) {
+    return ok(await hydrateUser(await fetchProfile(id)));
   },
 
-  createUser(body: UserForm) {
-    return request<ApiResponse>({
-      url: `${API_PATH}/create`,
-      method: "post",
-      data: body,
-    });
-  },
-
-  updateUser(id: number, body: UserForm) {
-    return request<ApiResponse>({
-      url: `${API_PATH}/update/${id}`,
-      method: "put",
-      data: body,
-    });
-  },
-
-  deleteUser(body: number[]) {
-    return request<ApiResponse>({
-      url: `${API_PATH}/delete`,
-      method: "delete",
-      data: body,
-    });
-  },
-
-  batchUser(body: BatchType) {
-    return request<ApiResponse>({
-      url: `${API_PATH}/status/batch`,
-      method: "patch",
-      data: body,
-    });
-  },
-
-  exportUser(query: UserPageQuery) {
-    return request<Blob>({
-      url: `${API_PATH}/export`,
-      method: "post",
-      data: query,
-      responseType: "blob",
-    });
-  },
-
-  downloadTemplateUser() {
-    return request<Blob>({
-      url: `${API_PATH}/import/template`,
-      method: "get",
-      responseType: "blob",
-    });
-  },
-
-  importUser(body: FormData) {
-    return request<ApiResponse>({
-      url: `${API_PATH}/import/data`,
-      method: "post",
-      data: body,
-      headers: {
-        "Content-Type": "multipart/form-data",
+  async createUser(body: UserForm) {
+    const email = body.email || toLoginEmail(body.username || "user");
+    const created = await insforgeRequest<{ user?: { id: string } }>("/api/auth/users?client_type=server", {
+      method: "POST",
+      json: {
+        email,
+        password: body.password || "123456",
+        name: body.name || body.username,
       },
     });
+    const id = created.user?.id;
+    if (!id) throw new Error("创建登录账号失败");
+    unwrap(
+      await insforge.database.from("profiles").insert([
+        {
+          id,
+          username: body.username,
+          name: body.name || body.username,
+          email,
+          mobile: body.mobile,
+          gender: body.gender ?? "2",
+          status: body.status ?? 0,
+          dept_id: body.dept_id ?? null,
+          is_superuser: !!body.is_superuser,
+          description: body.description,
+          avatar: body.avatar,
+        },
+      ])
+    );
+    if (body.role_ids?.length) {
+      unwrap(
+        await insforge.database
+          .from("sys_user_roles")
+          .insert(body.role_ids.map((roleId) => ({ user_id: id, role_id: roleId })))
+      );
+    }
+    if (body.position_ids?.length) {
+      unwrap(
+        await insforge.database
+          .from("sys_user_positions")
+          .insert(body.position_ids.map((positionId) => ({ user_id: id, position_id: positionId })))
+      );
+    }
+    return ok(null, "创建成功", true);
+  },
+
+  async updateUser(id: number, body: UserForm) {
+    unwrap(
+      await insforge.database
+        .from("profiles")
+        .update({
+          username: body.username,
+          name: body.name,
+          email: body.email,
+          mobile: body.mobile,
+          gender: body.gender,
+          status: body.status,
+          dept_id: body.dept_id ?? null,
+          is_superuser: body.is_superuser,
+          description: body.description,
+          avatar: body.avatar,
+        })
+        .eq("id", id)
+    );
+    if (body.role_ids) {
+      await insforge.database.from("sys_user_roles").delete().eq("user_id", id);
+      if (body.role_ids.length) {
+        unwrap(
+          await insforge.database
+            .from("sys_user_roles")
+            .insert(body.role_ids.map((roleId) => ({ user_id: id, role_id: roleId })))
+        );
+      }
+    }
+    if (body.position_ids) {
+      await insforge.database.from("sys_user_positions").delete().eq("user_id", id);
+      if (body.position_ids.length) {
+        unwrap(
+          await insforge.database
+            .from("sys_user_positions")
+            .insert(body.position_ids.map((positionId) => ({ user_id: id, position_id: positionId })))
+        );
+      }
+    }
+    return ok(null, "更新成功", true);
+  },
+
+  async deleteUser(body: Array<number | string>) {
+    unwrap(await insforge.database.from("profiles").delete().in("id", body));
+    return ok(null, "删除成功", true);
+  },
+
+  async batchUser(body: BatchType) {
+    unwrap(await insforge.database.from("profiles").update({ status: body.status }).in("id", body.ids));
+    return ok(null, "更新成功", true);
+  },
+
+  async exportUser(_query: UserPageQuery) {
+    throw new Error("第一期未迁移导出");
+  },
+
+  async downloadTemplateUser() {
+    throw new Error("第一期未迁移导入模板");
+  },
+
+  async importUser(_body: FormData) {
+    throw new Error("第一期未迁移导入");
   },
 };
 

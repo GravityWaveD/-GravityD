@@ -1,6 +1,6 @@
 {
-  "name": "fastapiadmin",
-  "description": "Vue3 + Vite + TypeScript + Element-Plus 的后台管理模板",
+  "name": "gravityd",
+  "description": "GravityD — Vue3 + InsForge 中后台开发脚手架",
   "version": "3.0.0",
   "private": true,
   "type": "module",
@@ -71,6 +71,7 @@
     "@iconify-json/ri": "^1.2.10",
     "@iconify-json/svg-spinners": "^1.2.4",
     "@iconify/vue": "^5.0.1",
+    "@insforge/sdk": "^1.5.2",
     "@tailwindcss/vite": "^4.3.0",
     "@vue-flow/background": "^1.3.2",
     "@vue-flow/controls": "^1.1.3",

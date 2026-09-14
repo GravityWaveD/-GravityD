@@ -338,8 +338,8 @@
   },
   "login": {
     "leftView": {
-      "title": "A backend system of beauty and efficiency",
-      "subTitle": "Provide secure, efficient, and scalable management solutions to help enterprises digitalize and grow their businesses."
+      "title": "Admin scaffold for every product",
+      "subTitle": "Self-hosted InsForge plus Vue3. Spin up auth, menus, and business modules in minutes."
     },
     "title": "Welcome back 👋",
     "subTitle": "Enter your account details to start managing your project",

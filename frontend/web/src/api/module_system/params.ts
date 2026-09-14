@@ -1,34 +1,31 @@
-import { request, NO_AUTH_FLAG } from "@utils";
-
-const API_PATH = "/system/param";
+import { insforge } from "@/utils/insforge";
+import { ok, unwrap } from "@/utils/insforge-api";
 
 const ParamsAPI = {
-  uploadFile(body: any) {
-    return request<ApiResponse<UploadFilePath>>({
-      url: `/common/file/upload?upload_type=param`,
-      method: "post",
-      data: body,
-      headers: { "Content-Type": "multipart/form-data" },
-    });
+  async uploadFile(_body: unknown) {
+    throw new Error("第一期未迁移参数文件上传");
   },
 
-  /** 登录前拉取站点参数：不带 Token，避免过期 JWT 导致 401 无法展示底部备案等 */
-  getInitConfig() {
-    return request<ApiResponse<ConfigTable[]>>({
-      url: `${API_PATH}/info`,
-      method: "get",
-      headers: {
-        Authorization: NO_AUTH_FLAG,
-      },
-    });
+  async getInitConfig() {
+    const rows = (unwrap(await insforge.database.from("sys_param").select("*").eq("status", 0)) as ConfigTable[]) || [];
+    return ok(rows);
   },
 
-  updateParams(id: number, body: ConfigForm) {
-    return request<ApiResponse>({
-      url: `${API_PATH}/update/${id}`,
-      method: "put",
-      data: body,
-    });
+  async updateParams(id: number, body: ConfigForm) {
+    unwrap(
+      await insforge.database
+        .from("sys_param")
+        .update({
+          config_name: body.config_name,
+          config_key: body.config_key,
+          config_value: body.config_value,
+          config_type: body.config_type,
+          status: body.status,
+          description: body.description,
+        })
+        .eq("id", id)
+    );
+    return ok(null, "更新成功", true);
   },
 };
 

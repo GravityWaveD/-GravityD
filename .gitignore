@@ -45,6 +45,11 @@ node_modules
 
 backend/logs
 backend/*.db
+backend/*.db-shm
+backend/*.db-wal
+.local/
+insforge/
+insforge-app/.env
 # 用户上传目录，禁止入库
 backend/static/upload/
 backend/env/.env.dev

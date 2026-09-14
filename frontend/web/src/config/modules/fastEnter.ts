@@ -11,12 +11,21 @@ const fastEnterConfig: FastEnterConfig = {
   // 应用列表
   applications: [
     {
+      name: "InsForge 管理",
+      description: "后端控制台与数据表",
+      icon: "ri:database-2-line",
+      iconColor: "#377dff",
+      enabled: true,
+      order: 1,
+      routeName: "InsforgeOverview",
+    },
+    {
       name: "用户管理",
       description: "系统用户管理与维护",
       icon: "ri:user-settings-line",
       iconColor: "#377dff",
       enabled: true,
-      order: 1,
+      order: 2,
       routeName: "User",
     },
     {
@@ -25,7 +34,7 @@ const fastEnterConfig: FastEnterConfig = {
       icon: "ri:shield-user-line",
       iconColor: "#FF6B35",
       enabled: true,
-      order: 2,
+      order: 3,
       routeName: "Role",
     },
     {

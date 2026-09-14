@@ -1,53 +1,62 @@
-import { request } from "@utils";
-
-const API_PATH = "/system/dept";
+import { insforge } from "@/utils/insforge";
+import { buildTree, ok, unwrap } from "@/utils/insforge-api";
 
 const DeptAPI = {
-  listDept(query?: DeptPageQuery) {
-    return request<ApiResponse<DeptTable[]>>({
-      url: `${API_PATH}/tree`,
-      method: "get",
-      params: query,
-    });
+  async listDept(query?: DeptPageQuery) {
+    let builder = insforge.database.from("sys_dept").select("*");
+    if (query?.name) builder = builder.ilike("name", `%${query.name}%`);
+    if (query?.status !== undefined && query.status !== null) builder = builder.eq("status", query.status);
+    const rows = ((unwrap(await builder) as DeptTable[]) || []).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    return ok(buildTree(rows));
   },
 
-  detailDept(id: number) {
-    return request<ApiResponse<DeptTable>>({
-      url: `${API_PATH}/detail/${id}`,
-      method: "get",
-    });
+  async detailDept(id: number) {
+    const rows = unwrap(await insforge.database.from("sys_dept").select("*").eq("id", id)) as DeptTable[];
+    if (!rows?.[0]) throw new Error("部门不存在");
+    return ok(rows[0]);
   },
 
-  createDept(body: DeptForm) {
-    return request<ApiResponse>({
-      url: `${API_PATH}/create`,
-      method: "post",
-      data: body,
-    });
+  async createDept(body: DeptForm) {
+    unwrap(
+      await insforge.database.from("sys_dept").insert([
+        {
+          name: body.name,
+          code: body.code,
+          parent_id: body.parent_id ?? null,
+          order: body.order ?? 999,
+          status: body.status ?? 0,
+          description: body.description,
+        },
+      ])
+    );
+    return ok(null, "创建成功", true);
   },
 
-  updateDept(id: number, body: DeptForm) {
-    return request<ApiResponse>({
-      url: `${API_PATH}/update/${id}`,
-      method: "put",
-      data: body,
-    });
+  async updateDept(id: number, body: DeptForm) {
+    unwrap(
+      await insforge.database
+        .from("sys_dept")
+        .update({
+          name: body.name,
+          code: body.code,
+          parent_id: body.parent_id ?? null,
+          order: body.order,
+          status: body.status,
+          description: body.description,
+        })
+        .eq("id", id)
+    );
+    return ok(null, "更新成功", true);
   },
 
-  deleteDept(body: number[]) {
-    return request<ApiResponse>({
-      url: `${API_PATH}/delete`,
-      method: "delete",
-      data: body,
-    });
+  async deleteDept(body: number[]) {
+    unwrap(await insforge.database.from("sys_dept").delete().in("id", body));
+    return ok(null, "删除成功", true);
   },
 
-  batchDept(body: BatchType) {
-    return request<ApiResponse>({
-      url: `${API_PATH}/status/batch`,
-      method: "patch",
-      data: body,
-    });
+  async batchDept(body: BatchType) {
+    unwrap(await insforge.database.from("sys_dept").update({ status: body.status }).in("id", body.ids));
+    return ok(null, "更新成功", true);
   },
 };
 

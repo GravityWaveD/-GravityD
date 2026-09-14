@@ -1,0 +1,29 @@
+# 本地源码开发：只启动 MySQL，后端/前端/Redis 仍跑在宿主机
+# 用法：docker compose -f docker/docker-compose.mysql-dev.yaml up -d
+services:
+  mysql:
+    container_name: fastapiadmin-mysql
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      MYSQL_ROOT_PASSWORD: fastapiadmin
+      MYSQL_DATABASE: fastapiadmin
+      MYSQL_USER: fastapiadmin
+      MYSQL_PASSWORD: fastapiadmin
+    ports:
+      - "3306:3306"
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - fastapiadmin_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-pfastapiadmin"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+volumes:
+  fastapiadmin_mysql_data:

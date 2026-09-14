@@ -57,8 +57,8 @@
     <ElCarouselItem>
       <FaBasicBanner
         height="100%"
-        title="欢迎使用 FastapiAdmin"
-        subtitle="基于 Vue 3 + TypeScript + Element Plus 构建的现代化管理系统。"
+        title="欢迎使用 GravityD"
+        subtitle="基于 Vue 3 + TypeScript + 自托管 InsForge 的中后台开发脚手架。"
         titleColor="#333"
         subtitleColor="#666"
         boxStyle="!bg-[#D4F1F7]"

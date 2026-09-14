@@ -1,8 +1,13 @@
 <template>
   <ElSubMenu v-if="hasChildren" :index="item.path || item.meta.title" class="p-0!">
     <template #title>
-      <FaMenuRouteIcon :icon="item.meta.icon" :color="theme?.iconColor" class="mr-1 text-lg" />
-      <span class="text-md">{{ formatMenuTitle(item.meta.title) }}</span>
+      <FaMenuRouteIcon
+        :icon="item.meta.icon"
+        :color="theme?.iconColor"
+        class="mr-1 text-lg"
+        @click="goCatalog(item)"
+      />
+      <span class="text-md" @click="goCatalog(item)">{{ formatMenuTitle(item.meta.title) }}</span>
       <div
         v-if="item.meta.showBadge && !item.meta.showTextBadge"
         class="fa-badge fa-badge-horizontal"
@@ -99,6 +104,11 @@ const hasChildren = computed(() => {
 const goPage = (item: AppRouteRecord) => {
   closeMenu();
   handleMenuJump(item);
+};
+
+const goCatalog = (item: AppRouteRecord) => {
+  closeMenu();
+  handleMenuJump(item, true);
 };
 
 const closeMenu = () => {

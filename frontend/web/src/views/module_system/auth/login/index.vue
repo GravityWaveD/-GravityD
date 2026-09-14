@@ -332,29 +332,29 @@ watch(authPanel, (panel) => {
 
 const accounts = computed<Account[]>(() => [
   {
-    key: "super",
-    label: t("login.roles.super"),
-    username: "super",
-    password: "123456",
-    roles: ["R_SUPER"],
-  },
-  {
     key: "admin",
     label: t("login.roles.admin"),
-    username: "admin",
+    username: "admin@local.dev",
     password: "123456",
     roles: ["R_ADMIN"],
   },
   {
+    key: "super",
+    label: t("login.roles.super"),
+    username: "admin@local.dev",
+    password: "123456",
+    roles: ["R_SUPER"],
+  },
+  {
     key: "user",
     label: t("login.roles.user"),
-    username: "user",
+    username: "admin@local.dev",
     password: "123456",
     roles: ["R_USER"],
   },
 ]);
 
-const demoAccountKey = ref<AccountKey>("super");
+const demoAccountKey = ref<AccountKey>("admin");
 const userStore = useUserStore();
 const router = useRouter();
 const route = useRoute();
@@ -531,10 +531,10 @@ let notificationInstance: ReturnType<typeof ElNotification> | null = null;
 
 const showVoteNotification = () => {
   notificationInstance = ElNotification({
-    title: "⭐ FastapiAdmin 完全开源 · 期待您的 Star 支持 🙏",
-    message: `项目持续迭代中，若对您有所帮助，欢迎点亮 Star 支持！
-    <br/><a href="https://github.com/fastapiadmin/FastapiAdmin" target="_blank" style="color: var(--el-color-primary); text-decoration: none; font-weight: 500;">Github仓库 →</a>
-    <br/><a href="https://gitee.com/fastapiadmin/FastapiAdmin" target="_blank" style="color: var(--el-color-warning); text-decoration: none; font-weight: 500;">Gitee仓库 →</a>`,
+    title: "GravityD 开发脚手架",
+    message: `本地后台：<code>admin@local.dev</code> / <code>123456</code>
+    <br/>初始化：<code>bash scripts/init.sh</code>
+    <br/>二次开发约定见仓库 <code>.cursor/skills/base-server-app</code>`,
     type: "success",
     position:
       panelAlign.value === "right" || panelAlign.value === "center"
@@ -548,7 +548,7 @@ const showVoteNotification = () => {
 let voteTimer: ReturnType<typeof setTimeout> | null = null;
 
 onMounted(async () => {
-  setupAccount("super");
+  setupAccount("admin");
   await configStore.getConfig(true);
   await tryConsumeOAuthCallback();
   if (userStore.isLogin) {

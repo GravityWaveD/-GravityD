@@ -1,69 +1,74 @@
-import { request } from "@utils";
-
-const API_PATH = "/system/position";
+import { insforge } from "@/utils/insforge";
+import { ok, pageOf, rangeOf, unwrap } from "@/utils/insforge-api";
 
 const PositionAPI = {
-  listPosition(query?: PositionPageQuery) {
-    return request<ApiResponse<PageResult<PositionTable>>>({
-      url: `${API_PATH}/list`,
-      method: "get",
-      params: query,
-    });
+  async listPosition(query?: PositionPageQuery) {
+    const { pageNo, pageSize } = rangeOf(query?.page_no, query?.page_size);
+    let builder = insforge.database.from("sys_position").select("*");
+    if (query?.name) builder = builder.ilike("name", `%${query.name}%`);
+    if (query?.status !== undefined && query.status !== null && query.status !== ("" as unknown as number)) {
+      builder = builder.eq("status", query.status);
+    }
+    const rows = ((unwrap(await builder) as PositionTable[]) || []).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    return ok(pageOf(rows.slice((pageNo - 1) * pageSize, pageNo * pageSize), rows.length, pageNo, pageSize));
   },
 
-  detailPosition(query: number) {
-    return request<ApiResponse<PositionTable>>({
-      url: `${API_PATH}/detail/${query}`,
-      method: "get",
-    });
+  async detailPosition(id: number) {
+    const rows = unwrap(await insforge.database.from("sys_position").select("*").eq("id", id)) as PositionTable[];
+    if (!rows?.[0]) throw new Error("岗位不存在");
+    return ok(rows[0]);
   },
 
-  createPosition(body: PositionForm) {
-    return request<ApiResponse>({
-      url: `${API_PATH}/create`,
-      method: "post",
-      data: body,
-    });
+  async createPosition(body: PositionForm) {
+    unwrap(
+      await insforge.database.from("sys_position").insert([
+        {
+          name: body.name,
+          code: body.code,
+          order: body.order ?? 1,
+          status: body.status ?? 0,
+          description: body.description,
+        },
+      ])
+    );
+    return ok(null, "创建成功", true);
   },
 
-  updatePosition(id: number, body: PositionForm) {
-    return request<ApiResponse>({
-      url: `${API_PATH}/update/${id}`,
-      method: "put",
-      data: body,
-    });
+  async updatePosition(id: number, body: PositionForm) {
+    unwrap(
+      await insforge.database
+        .from("sys_position")
+        .update({
+          name: body.name,
+          code: body.code,
+          order: body.order,
+          status: body.status,
+          description: body.description,
+        })
+        .eq("id", id)
+    );
+    return ok(null, "更新成功", true);
   },
 
-  deletePosition(body: number[]) {
-    return request<ApiResponse>({
-      url: `${API_PATH}/delete`,
-      method: "delete",
-      data: body,
-    });
+  async deletePosition(body: number[]) {
+    unwrap(await insforge.database.from("sys_position").delete().in("id", body));
+    return ok(null, "删除成功", true);
   },
 
-  batchPosition(body: BatchType) {
-    return request<ApiResponse>({
-      url: `${API_PATH}/status/batch`,
-      method: "patch",
-      data: body,
-    });
+  async batchPosition(body: BatchType) {
+    unwrap(await insforge.database.from("sys_position").update({ status: body.status }).in("id", body.ids));
+    return ok(null, "更新成功", true);
   },
 
-  exportPosition(query: PositionPageQuery) {
-    return request<Blob>({
-      url: `${API_PATH}/export`,
-      method: "post",
-      data: query,
-      responseType: "blob",
-    });
+  async exportPosition(_query: PositionPageQuery) {
+    throw new Error("未迁移导出");
   },
 
-  getPositionOptions() {
-    return request<ApiResponse<OptionType[]>>({
-      url: `${API_PATH}/options`,
-      method: "get",
-    });
+  async getPositionOptions() {
+    const rows =
+      (unwrap(await insforge.database.from("sys_position").select("id,name,code,status").eq("status", 0)) as PositionTable[]) ||
+      [];
+    return ok(rows.map((row) => ({ value: row.id!, label: row.name || row.code || String(row.id) })));
   },
 };
 

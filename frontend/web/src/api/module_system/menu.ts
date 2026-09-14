@@ -1,55 +1,77 @@
-import { request } from "@utils";
+import { insforge } from "@/utils/insforge";
+import { buildTree, ok, unwrap } from "@/utils/insforge-api";
 
-const API_PATH = "/system/menu";
+function sortMenus(rows: MenuTable[]) {
+  return [...rows].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+}
 
 const MenuAPI = {
-  listMenu(query?: MenuPageQuery) {
-    return request<ApiResponse<MenuTable[]>>({
-      url: `${API_PATH}/tree`,
-      method: "get",
-      params: query,
-    });
+  async listMenu(query?: MenuPageQuery) {
+    let builder = insforge.database.from("sys_menu").select("*");
+    if (query?.name) builder = builder.ilike("name", `%${query.name}%`);
+    if (query?.status !== undefined && query.status !== null) builder = builder.eq("status", query.status);
+    if (query?.type !== undefined && query.type !== null) builder = builder.eq("type", query.type);
+    if (query?.permission) builder = builder.ilike("permission", `%${query.permission}%`);
+    const rows = sortMenus((unwrap(await builder) as MenuTable[]) || []);
+    return ok(buildTree(rows));
   },
 
-  detailMenu(query: number) {
-    return request<ApiResponse<MenuTable>>({
-      url: `${API_PATH}/detail/${query}`,
-      method: "get",
-    });
+  async detailMenu(id: number) {
+    const rows = unwrap(await insforge.database.from("sys_menu").select("*").eq("id", id)) as MenuTable[];
+    if (!rows?.[0]) throw new Error("菜单不存在");
+    return ok(rows[0]);
   },
 
-  createMenu(body: MenuForm) {
-    return request<ApiResponse>({
-      url: `${API_PATH}/create`,
-      method: "post",
-      data: body,
-    });
+  async createMenu(body: MenuForm) {
+    unwrap(await insforge.database.from("sys_menu").insert([sanitizeMenu(body)]).select());
+    return ok(null, "创建成功", true);
   },
 
-  updateMenu(id: number, body: MenuForm) {
-    return request<ApiResponse>({
-      url: `${API_PATH}/update/${id}`,
-      method: "put",
-      data: body,
-    });
+  async updateMenu(id: number, body: MenuForm) {
+    unwrap(await insforge.database.from("sys_menu").update(sanitizeMenu(body)).eq("id", id));
+    return ok(null, "更新成功", true);
   },
 
-  deleteMenu(body: number[]) {
-    return request<ApiResponse>({
-      url: `${API_PATH}/delete`,
-      method: "delete",
-      data: body,
-    });
+  async deleteMenu(body: number[]) {
+    unwrap(await insforge.database.from("sys_menu").delete().in("id", body));
+    return ok(null, "删除成功", true);
   },
 
-  batchMenu(body: BatchType) {
-    return request<ApiResponse>({
-      url: `${API_PATH}/status/batch`,
-      method: "patch",
-      data: body,
-    });
+  async batchMenu(body: BatchType) {
+    unwrap(await insforge.database.from("sys_menu").update({ status: body.status }).in("id", body.ids));
+    return ok(null, "更新成功", true);
   },
 };
+
+function sanitizeMenu(body: MenuForm) {
+  return {
+    name: body.name,
+    type: body.type,
+    icon: body.icon,
+    order: body.order,
+    permission: body.permission,
+    route_name: body.route_name,
+    route_path: body.route_path,
+    component_path: body.component_path,
+    redirect: body.redirect,
+    parent_id: body.parent_id ?? null,
+    keep_alive: body.keep_alive,
+    hidden: body.hidden,
+    always_show: body.always_show,
+    title: body.title,
+    params: body.params ?? null,
+    affix: body.affix,
+    link: body.link,
+    is_iframe: body.is_iframe,
+    is_hide_tab: body.is_hide_tab,
+    active_path: body.active_path,
+    show_badge: body.show_badge,
+    show_text_badge: body.show_text_badge,
+    scope: body.scope || "web",
+    status: body.status ?? 0,
+    description: body.description,
+  };
+}
 
 export default MenuAPI;
 

@@ -65,6 +65,13 @@
             </li>
             <li
               class="flex items-center p-2 mb-3 select-none rounded-md cursor-pointer last:mb-0 hover:bg-(--el-color-primary)/10"
+              @click="goPage('/insforge/overview')"
+            >
+              <FaSvgIcon icon="ri:database-2-line" class="mr-2 text-base" />
+              <span class="text-sm">InsForge 管理</span>
+            </li>
+            <li
+              class="flex items-center p-2 mb-3 select-none rounded-md cursor-pointer last:mb-0 hover:bg-(--el-color-primary)/10"
               @click="toGithub()"
             >
               <FaSvgIcon icon="ri:github-line" class="mr-2 text-base" />

@@ -1,54 +1,109 @@
-import { request } from "@utils";
+import { insforge } from "@/utils/insforge";
+import { ok, pageOf, rangeOf, unwrap } from "@/utils/insforge-api";
 
-const API_PATH = "/system/ticket";
+async function hydrateTicket(row: TicketTable): Promise<TicketTable> {
+  if (!row.assigned_id) return row;
+  const users = unwrap(
+    await insforge.database.from("profiles").select("id,name").eq("id", row.assigned_id)
+  ) as { id: string; name?: string }[];
+  const user = users?.[0];
+  return {
+    ...row,
+    assigned_by: user ? { id: user.id as unknown as number, name: user.name } : undefined,
+  };
+}
 
 const TicketAPI = {
-  listTicket(query?: TicketPageQuery) {
-    return request<ApiResponse<PageResult<TicketTable>>>({
-      url: `${API_PATH}/list`,
-      method: "get",
-      params: query,
-    });
+  async listTicket(query?: TicketPageQuery) {
+    const { pageNo, pageSize } = rangeOf(query?.page_no, query?.page_size);
+    let builder = insforge.database.from("sys_ticket").select("*");
+    if (query?.title) builder = builder.ilike("title", `%${query.title}%`);
+    if (query?.ticket_type) builder = builder.eq("ticket_type", query.ticket_type);
+    if (query?.assigned_id) builder = builder.eq("assigned_id", query.assigned_id);
+    if (query?.status !== undefined && query.status !== null && query.status !== ("" as unknown as number)) {
+      builder = builder.eq("status", query.status);
+    }
+    const rows = ((unwrap(await builder) as TicketTable[]) || []).sort(
+      (a, b) => String(b.created_time || "").localeCompare(String(a.created_time || ""))
+    );
+    const page = rows.slice((pageNo - 1) * pageSize, pageNo * pageSize);
+    const items = await Promise.all(page.map((row) => hydrateTicket(row)));
+    return ok(pageOf(items, rows.length, pageNo, pageSize));
   },
-  detailTicket(id: number) {
-    return request<ApiResponse<TicketTable>>({ url: `${API_PATH}/detail/${id}`, method: "get" });
+
+  async detailTicket(id: number) {
+    const rows = unwrap(await insforge.database.from("sys_ticket").select("*").eq("id", id)) as TicketTable[];
+    if (!rows?.[0]) throw new Error("工单不存在");
+    return ok(await hydrateTicket(rows[0]));
   },
-  createTicket(body: TicketCreateForm) {
-    return request<ApiResponse>({ url: `${API_PATH}/create`, method: "post", data: body });
+
+  async createTicket(body: TicketCreateForm) {
+    unwrap(
+      await insforge.database.from("sys_ticket").insert([
+        {
+          title: body.title,
+          ticket_content: body.ticket_content,
+          summary: body.summary,
+          ticket_type: body.ticket_type || "suggestion",
+          images: body.images,
+          description: body.description,
+          status: 0,
+        },
+      ])
+    );
+    return ok(null, "创建成功", true);
   },
-  updateTicket(id: number, body: TicketUpdateForm) {
-    return request<ApiResponse>({ url: `${API_PATH}/update/${id}`, method: "put", data: body });
+
+  async updateTicket(id: number, body: TicketUpdateForm) {
+    unwrap(
+      await insforge.database
+        .from("sys_ticket")
+        .update({
+          title: body.title,
+          ticket_content: body.ticket_content,
+          summary: body.summary,
+          ticket_type: body.ticket_type,
+          status: body.status,
+          reply: body.reply,
+          assigned_id: body.assigned_id ?? null,
+          description: body.description,
+        })
+        .eq("id", id)
+    );
+    return ok(null, "更新成功", true);
   },
-  deleteTicket(body: number[]) {
-    return request<ApiResponse>({ url: `${API_PATH}/delete`, method: "delete", data: body });
+
+  async deleteTicket(body: number[]) {
+    unwrap(await insforge.database.from("sys_ticket").delete().in("id", body));
+    return ok(null, "删除成功", true);
   },
-  exportTicket(query?: TicketPageQuery) {
-    return request<ApiResponse<Blob>>({
-      url: `${API_PATH}/export`,
-      method: "post",
-      data: query,
-      responseType: "blob",
-    });
+
+  async exportTicket(_query?: TicketPageQuery) {
+    throw new Error("未迁移导出");
   },
-  batchTicket(body: { ids: number[]; status: number }) {
-    return request<ApiResponse>({ url: `${API_PATH}/batch`, method: "put", data: body });
+
+  async batchTicket(body: { ids: number[]; status: number }) {
+    unwrap(await insforge.database.from("sys_ticket").update({ status: body.status }).in("id", body.ids));
+    return ok(null, "更新成功", true);
   },
 };
 
-export function getTicketComments(ticketId: number, params?: PageQuery) {
-  return request<ApiResponse<PageResult<TicketCommentTable>>>({
-    url: `${API_PATH}/${ticketId}/comments`,
-    method: "get",
-    params,
-  });
+export async function getTicketComments(ticketId: number, params?: PageQuery) {
+  const { pageNo, pageSize } = rangeOf(params?.page_no, params?.page_size);
+  const rows = ((unwrap(
+    await insforge.database.from("sys_ticket_comment").select("*").eq("ticket_id", ticketId)
+  ) as TicketCommentTable[]) || []).sort((a, b) => String(a.created_time || "").localeCompare(String(b.created_time || "")));
+  return ok(pageOf(rows.slice((pageNo - 1) * pageSize, pageNo * pageSize), rows.length, pageNo, pageSize));
 }
 
-export function createTicketComment(ticketId: number, data: TicketCommentCreateForm) {
-  return request<ApiResponse<TicketCommentTable>>({
-    url: `${API_PATH}/${ticketId}/comments`,
-    method: "post",
-    data,
-  });
+export async function createTicketComment(ticketId: number, data: TicketCommentCreateForm) {
+  const inserted = unwrap(
+    await insforge.database
+      .from("sys_ticket_comment")
+      .insert([{ ticket_id: ticketId, content: data.content }])
+      .select()
+  ) as TicketCommentTable[];
+  return ok(inserted?.[0] || null, "评论成功", true);
 }
 
 export default TicketAPI;
@@ -56,7 +111,7 @@ export default TicketAPI;
 export interface TicketPageQuery extends PageQuery, UserByQueryParams {
   title?: string;
   ticket_type?: string;
-  assigned_id?: number;
+  assigned_id?: string | number;
   status?: number;
 }
 
@@ -67,7 +122,7 @@ export interface TicketTable extends BaseType {
   ticket_type: string;
   images?: string;
   reply?: string;
-  assigned_id?: number;
+  assigned_id?: string | number;
   assigned_by?: CommonType;
   status?: number;
   description?: string;
@@ -89,7 +144,7 @@ export interface TicketUpdateForm {
   ticket_type?: string;
   status?: number;
   reply?: string;
-  assigned_id?: number;
+  assigned_id?: string | number;
   description?: string;
 }
 
@@ -100,12 +155,11 @@ export interface TicketForm extends BaseFormType {
   ticket_type: string;
   images?: string;
   reply?: string;
-  assigned_id?: number;
+  assigned_id?: string | number;
   status?: number;
   description?: string;
 }
 
-// ─── 评论 ───
 export interface TicketCommentTable extends BaseType {
   ticket_id: number;
   content: string;

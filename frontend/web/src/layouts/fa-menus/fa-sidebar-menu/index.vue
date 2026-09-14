@@ -457,7 +457,8 @@ watch(menuOpen, (isMenuOpen: boolean) => {
     }
 
     .el-menu {
-      height: 100%;
+      height: auto;
+      min-height: 100%;
     }
 
     &:hover {
@@ -531,6 +532,7 @@ watch(menuOpen, (isMenuOpen: boolean) => {
 
   .el-menu {
     box-sizing: border-box;
+    height: auto;
 
     /* 防止菜单内的滚动影响整个页面滚动 */
     overscroll-behavior: contain;
@@ -558,7 +560,7 @@ watch(menuOpen, (isMenuOpen: boolean) => {
     }
 
     .el-menu {
-      height: calc(100vh - 60px);
+      height: auto;
     }
 
     .el-menu--collapse {
@@ -884,6 +886,12 @@ $popup-menu-radius: 6px;
 }
 
 .layout-sidebar {
+  /* 折叠动画卡住时仍按已展开计算高度，避免子菜单叠在后面的入口上 */
+  .el-sub-menu.is-opened > .el-menu--inline {
+    display: block !important;
+    height: auto !important;
+  }
+
   /* 展开的宽度 */
   .el-menu:not(.el-menu--collapse) {
     width: v-bind(menuopenwidth);

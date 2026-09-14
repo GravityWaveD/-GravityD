@@ -39,7 +39,7 @@
       <FaCardBanner
         :image="icon4"
         title="版本更新提醒"
-        description="FastapiAdmin v3.1.0 已发布，包含优化和新功能。"
+        description="GravityD 脚手架已就绪，可按模块约定扩展业务。"
         :button="{
           show: true,
           text: '立即更新',

@@ -1,40 +1,49 @@
-import { request } from "@utils";
+import { insforge } from "@/utils/insforge";
+import { Auth } from "@/utils/auth";
+import { ok, pageOf, rangeOf, unwrap } from "@/utils/insforge-api";
 
-const API_PATH = "/monitor/online";
+function jwtSub(): string | null {
+  try {
+    const token = Auth.getAccessToken();
+    if (!token) return null;
+    const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return payload.sub || null;
+  } catch {
+    return null;
+  }
+}
 
 const OnlineAPI = {
-  // 查询在线用户列表
-  listOnline(query: OnlineUserPageQuery) {
-    return request<ApiResponse<PageResult<OnlineUserTable>>>({
-      url: `${API_PATH}/list`,
-      method: "get",
-      params: query,
-    });
+  async listOnline(query: OnlineUserPageQuery) {
+    const { pageNo, pageSize } = rangeOf(query.page_no, query.page_size);
+    let builder = insforge.database.from("sys_online").select("*");
+    if (query.name) builder = builder.ilike("name", `%${query.name}%`);
+    if (query.ipaddr) builder = builder.ilike("ipaddr", `%${query.ipaddr}%`);
+    if (query.login_location) builder = builder.ilike("login_location", `%${query.login_location}%`);
+    const rows = ((unwrap(await builder) as OnlineUserTable[]) || []).sort(
+      (a, b) => String(b.login_time || "").localeCompare(String(a.login_time || ""))
+    );
+    return ok(pageOf(rows.slice((pageNo - 1) * pageSize, pageNo * pageSize), rows.length, pageNo, pageSize));
   },
 
-  // 强退用户
-  deleteOnline(body: string) {
-    return request<ApiResponse>({
-      url: `${API_PATH}/delete`,
-      method: "delete",
-      data: body,
-    });
+  async deleteOnline(sessionId: string) {
+    unwrap(await insforge.database.from("sys_online").delete().eq("session_id", sessionId));
+    return ok(null, "已强制下线", true);
   },
 
-  // 获取当前用户自己的在线会话
-  listCurrentOnline() {
-    return request<ApiResponse<OnlineUserTable[]>>({
-      url: `${API_PATH}/current`,
-      method: "get",
-    });
+  async listCurrentOnline() {
+    const userId = jwtSub();
+    if (!userId) return ok([]);
+    const rows = (unwrap(await insforge.database.from("sys_online").select("*").eq("user_id", userId)) as OnlineUserTable[]) || [];
+    return ok(rows);
   },
 
-  // 强退用户
-  clearOnline() {
-    return request<ApiResponse>({
-      url: `${API_PATH}/clear`,
-      method: "delete",
-    });
+  async clearOnline() {
+    const rows = (unwrap(await insforge.database.from("sys_online").select("session_id")) as { session_id: string }[]) || [];
+    if (rows.length) {
+      unwrap(await insforge.database.from("sys_online").delete().in("session_id", rows.map((item) => item.session_id)));
+    }
+    return ok(null, "已清空", true);
   },
 };
 
@@ -48,7 +57,7 @@ export interface OnlineUserPageQuery extends PageQuery, UserByQueryParams {
 
 export interface OnlineUserTable {
   session_id: string;
-  user_id: number;
+  user_id: string | number;
   is_superuser?: boolean;
   name: string;
   user_name: string;

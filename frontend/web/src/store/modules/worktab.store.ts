@@ -476,7 +476,13 @@ export const useWorktabStore = defineStore(
                 path: tab.path,
                 query: (tab.query as LocationQueryRaw) || undefined,
               });
-              return resolved.matched.length > 0;
+              const last = resolved.matched[resolved.matched.length - 1];
+              const fallback = String(last?.name || "");
+              if (!resolved.matched.length) return false;
+              if (fallback === "CatchAll404" || fallback === "404" || fallback === "403" || fallback === "500") {
+                return false;
+              }
+              return true;
             }
             return false;
           } catch {
