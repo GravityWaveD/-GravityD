@@ -1,15 +1,18 @@
 import { insforge } from "@/utils/insforge";
-import { ok, pageOf, rangeOf, unwrap } from "@/utils/insforge-api";
+import { ok, serverPageOf, unwrap } from "@/utils/insforge-api";
 
 const DictAPI = {
   async listDictType(query: DictPageQuery) {
-    const { pageNo, pageSize } = rangeOf(query.page_no, query.page_size);
-    let builder = insforge.database.from("sys_dict_type").select("*");
+    let builder = insforge.database.from("sys_dict_type").select("*", { count: "exact" });
     if (query.dict_name) builder = builder.ilike("dict_name", `%${query.dict_name}%`);
     if (query.dict_type) builder = builder.ilike("dict_type", `%${query.dict_type}%`);
     if (query.status !== undefined && query.status !== null) builder = builder.eq("status", query.status);
-    const rows = ((unwrap(await builder) as DictTable[]) || []).slice();
-    return ok(pageOf(rows.slice((pageNo - 1) * pageSize, pageNo * pageSize), rows.length, pageNo, pageSize));
+    return serverPageOf<DictTable>(builder, {
+      pageNo: query.page_no,
+      pageSize: query.page_size,
+      sortField: "id",
+      ascending: true,
+    });
   },
 
   async optionDictType() {
@@ -67,15 +70,17 @@ const DictAPI = {
   },
 
   async listDictData(query: DictDataPageQuery) {
-    const { pageNo, pageSize } = rangeOf(query.page_no, query.page_size);
-    let builder = insforge.database.from("sys_dict_data").select("*");
+    let builder = insforge.database.from("sys_dict_data").select("*", { count: "exact" });
     if (query.dict_label) builder = builder.ilike("dict_label", `%${query.dict_label}%`);
     if (query.dict_type) builder = builder.eq("dict_type", query.dict_type);
     if (query.dict_type_id) builder = builder.eq("dict_type_id", query.dict_type_id);
     if (query.status !== undefined && query.status !== null) builder = builder.eq("status", query.status);
-    const rows = ((unwrap(await builder) as DictDataTable[]) || []).slice();
-    rows.sort((a, b) => (a.dict_sort ?? 0) - (b.dict_sort ?? 0));
-    return ok(pageOf(rows.slice((pageNo - 1) * pageSize, pageNo * pageSize), rows.length, pageNo, pageSize));
+    return serverPageOf<DictDataTable>(builder, {
+      pageNo: query.page_no,
+      pageSize: query.page_size,
+      sortField: "dict_sort",
+      ascending: true,
+    });
   },
 
   async detailDictData(id: number) {

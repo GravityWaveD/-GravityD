@@ -1,18 +1,20 @@
 import { insforge } from "@/utils/insforge";
-import { ok, pageOf, rangeOf, unwrap } from "@/utils/insforge-api";
+import { ok, serverPageOf, unwrap } from "@/utils/insforge-api";
 
 const RoleAPI = {
   async listRole(query?: TablePageQuery) {
-    const { pageNo, pageSize } = rangeOf(query?.page_no, query?.page_size);
-    let builder = insforge.database.from("sys_role").select("*");
+    let builder = insforge.database.from("sys_role").select("*", { count: "exact" });
     if (query?.name) builder = builder.ilike("name", `%${query.name}%`);
     if (query?.code) builder = builder.ilike("code", `%${query.code}%`);
     if (query?.status !== undefined && query.status !== null && query.status !== ("" as unknown as number)) {
       builder = builder.eq("status", query.status);
     }
-    const rows = ((unwrap(await builder) as RoleTable[]) || []).slice();
-    const items = rows.slice((pageNo - 1) * pageSize, pageNo * pageSize);
-    return ok(pageOf(items, rows.length, pageNo, pageSize));
+    return serverPageOf<RoleTable>(builder, {
+      pageNo: query?.page_no,
+      pageSize: query?.page_size,
+      sortField: "order",
+      ascending: true,
+    });
   },
 
   async detailRole(id: number) {

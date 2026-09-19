@@ -1,7 +1,11 @@
 ---
 name: "fastapiadmin-dev"
-description: "FastapiAdmin full-stack dev guide: repo map, run/verify commands, backend module & frontend web conventions. Invoke before writing code, creating modules/pages, debugging, or running builds/tests in this repo."
+description: "Historical FastapiAdmin full-stack notes. Current GravityD runtime is InsForge; use .cursor/skills/base-server-app instead."
 ---
+
+# 已过期
+
+`backend/` 已删除。本地运行请看仓库根 `README.md` 与 `.cursor/skills/base-server-app`。下面是历史 FastAPI 约定，不要按它启动 8001。
 
 # FastapiAdmin 全栈开发指南
 

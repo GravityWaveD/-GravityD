@@ -87,7 +87,18 @@ let ws: WebSocket | null = null;
 const WS_URL = import.meta.env.VITE_APP_WS_ENDPOINT;
 
 // ============ WebSocket 操作 ============
+const localAgentMode = ref(false);
+
 const connectWebSocket = () => {
+  if (!WS_URL) {
+    localAgentMode.value = true;
+    isConnected.value = true;
+    connectionStatus.value = "connected";
+    error.value = "";
+    ElMessage.success("已接入本地 Multi-Agent（引导 / 数据 / 工单）");
+    return;
+  }
+
   // CONNECTING / OPEN / CLOSING 期间一律拒绝重入：
   // 仅挡 OPEN 会在连接握手期间被重复调用，旧连接引用被覆盖后泄漏（后台照样连上并弹「连接成功」）
   if (ws && ws.readyState !== WebSocket.CLOSED) return;
@@ -238,6 +249,19 @@ const handleSendMessage = async (message: string, files?: UploadedFile[]) => {
   chatMessagesRef.value?.scrollToBottom();
 
   try {
+    if (localAgentMode.value) {
+      const res = await AiChatAPI.chat({ message, session_id: currentSessionId.value });
+      const payload = res.data?.data;
+      if (payload?.session_id) currentSessionId.value = payload.session_id;
+      const last = messages.value[messages.value.length - 1];
+      if (last?.type === "assistant") {
+        last.content = payload?.response || "无回复";
+        last.loading = false;
+      }
+      sending.value = false;
+      sidebarRef.value?.loadSessions();
+      return;
+    }
     if (ws?.readyState === WebSocket.OPEN) {
       ws.send(
         JSON.stringify({
@@ -246,7 +270,6 @@ const handleSendMessage = async (message: string, files?: UploadedFile[]) => {
           files: files?.map((f) => ({ name: f.name, type: f.type, size: f.size })),
         })
       );
-      // 注意：sending 状态保持为 true，等待 [DONE] / [STOPPED] 标记清除
     } else {
       throw new Error("WebSocket 连接未建立");
     }
@@ -300,16 +323,25 @@ const handleSelectSession = async (session: ChatSession) => {
     }
 
     const sessionData = response.data.data || {};
-    const runs = sessionData.runs || [];
-
-    runs.forEach((run: { messages?: { role: string; content: string }[] }) => {
-      const runMessages = run.messages || [];
-      runMessages.forEach((msg: { role: string; content: string }) => {
+    const stored = sessionData.messages || [];
+    if (stored.length) {
+      stored.forEach((msg: { role: string; content: string }) => {
         if (msg.role === "user" || msg.role === "assistant") {
-          addMessage(msg.role, msg.content);
+          addMessage(msg.role as "user" | "assistant", msg.content);
         }
       });
-    });
+    } else {
+      const runs = sessionData.runs || [];
+      runs.forEach((run: { messages?: { role: string; content: string }[] }) => {
+        const runMessages = run.messages || [];
+        runMessages.forEach((msg: { role: string; content: string }) => {
+          if (msg.role === "user" || msg.role === "assistant") {
+            addMessage(msg.role, msg.content);
+          }
+        });
+      });
+    }
+    finishLoadingMessages();
 
     ElMessage.success(`已切换到会话：${session.title}`);
   } catch {

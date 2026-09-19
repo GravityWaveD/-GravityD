@@ -1,5 +1,5 @@
 import { http } from '@/http'
-import { ContentTypeEnum } from '@/http/tools/enum'
+import { insforgeRequest, toLoginEmail } from '@/utils/insforge'
 
 const AUTH_BASE_URL = '/system/auth'
 
@@ -16,14 +16,20 @@ const AuthAPI = {
    * @param body 登录表单数据
    * @returns 登录结果
    */
-  login(body: LoginFormData): Promise<LoginResult> {
-    return http.Post(`${AUTH_BASE_URL}/login`, body, {
-      headers: {
-        'Content-Type': ContentTypeEnum.FORM_URLENCODED,
-      },
-      // authRole: 'login'：登录 401（密码错误）按普通错误处理，不触发 token 刷新逻辑
-      meta: { ignoreAuth: true, authRole: 'login' },
-    })
+  async login(body: LoginFormData): Promise<LoginResult> {
+    const email = toLoginEmail(body.username)
+    const session = await insforgeRequest<{ accessToken?: string, refreshToken?: string }>(
+      '/api/auth/sessions?client_type=mobile',
+      { method: 'POST', json: { method: 'password', email, password: body.password }, skipAccessToken: true },
+    )
+    if (!session.accessToken)
+      throw new Error('登录失败，请检查邮箱和密码')
+    return {
+      access_token: session.accessToken,
+      refresh_token: session.refreshToken || '',
+      token_type: 'Bearer',
+      expires_in: 3600,
+    }
   },
 
   /**
@@ -31,22 +37,25 @@ const AuthAPI = {
    * @param body 刷新令牌请求体
    * @returns 新的访问令牌
    */
-  refreshToken(body: RefreshToekenBody): Promise<LoginResult> {
-    // authRole: 'refreshToken'：让 http 层 401 处理器识别刷新请求，自身 401 时不触发刷新逻辑（避免死循环）
-    // silent：刷新失败由 http 层统一跳转登录，无需全局 toast
-    return http.Post(`${AUTH_BASE_URL}/token/refresh`, body, {
-      meta: { ignoreAuth: true, silent: true, authRole: 'refreshToken' },
-    })
+  async refreshToken(body: RefreshToekenBody): Promise<LoginResult> {
+    const session = await insforgeRequest<{ accessToken?: string, refreshToken?: string }>(
+      '/api/auth/refresh?client_type=mobile',
+      { method: 'POST', json: { refreshToken: body.refresh_token }, skipAccessToken: true },
+    )
+    return {
+      access_token: session.accessToken || '',
+      refresh_token: session.refreshToken || body.refresh_token,
+      token_type: 'Bearer',
+      expires_in: 3600,
+    }
   },
 
   /**
    * 获取验证码
    * @returns 验证码信息
    */
-  getCaptcha(): Promise<CaptchaInfo> {
-    // 添加随机参数防止缓存
-    const timestamp = new Date().getTime()
-    return http.Get(`${AUTH_BASE_URL}/captcha/get?timestamp=${timestamp}`, { meta: { ignoreAuth: true, authRole: 'visitor' } })
+  async getCaptcha(): Promise<CaptchaInfo> {
+    return { enable: false, key: '', img_base: '' }
   },
 
   /**
@@ -55,8 +64,13 @@ const AuthAPI = {
    * 需显式 JSON.stringify 使请求体成为合法 JSON 字符串（uni.request 对字符串原样发送）
    * @param token 访问令牌
    */
-  logout(token: string): Promise<void> {
-    return http.Post(`${AUTH_BASE_URL}/logout`, JSON.stringify(token))
+  async logout(_token: string): Promise<void> {
+    try {
+      await insforgeRequest('/api/auth/sessions/current', { method: 'DELETE' })
+    }
+    catch {
+      /* ignore */
+    }
   },
 
   /**

@@ -43,18 +43,10 @@ node_modules
 .pnpm-store
 .pnpm-debug.log
 
-backend/logs
-backend/*.db
-backend/*.db-shm
-backend/*.db-wal
 .local/
 insforge/
 insforge-app/.env
-# 用户上传目录，禁止入库
-backend/static/upload/
-backend/env/.env.dev
-backend/env/.env.prod
-backend/env/.env.test
+.gravityd/
 
 docker/.env
 docker/nginx/app/dist

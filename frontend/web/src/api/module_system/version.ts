@@ -1,15 +1,18 @@
 import { insforge } from "@/utils/insforge";
-import { ok, pageOf, rangeOf, unwrap } from "@/utils/insforge-api";
+import { ok, serverPageOf, unwrap } from "@/utils/insforge-api";
 
 const VersionAPI = {
   async getVersionList(query: VersionPageQuery) {
-    const { pageNo, pageSize } = rangeOf(query.page_no, query.page_size);
-    let builder = insforge.database.from("sys_version").select("*");
+    let builder = insforge.database.from("sys_version").select("*", { count: "exact" });
     if (query.status !== undefined && query.status !== null && query.status !== ("" as unknown as number)) {
       builder = builder.eq("status", query.status);
     }
-    const rows = ((unwrap(await builder) as VersionTable[]) || []).sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0));
-    return ok(pageOf(rows.slice((pageNo - 1) * pageSize, pageNo * pageSize), rows.length, pageNo, pageSize));
+    return serverPageOf<VersionTable>(builder, {
+      pageNo: query.page_no,
+      pageSize: query.page_size,
+      sortField: "sort",
+      ascending: true,
+    });
   },
 
   async getPublishedVersions() {

@@ -1,5 +1,4 @@
-import { request } from "@utils";
-import { createSSEClient, httpEndpoint, type SSEClient } from "@utils/sse";
+import { request, createSSEClient, httpEndpoint, type SSEClient } from "@/utils/legacy-fastapi";
 
 const API_PATH = "/task/storage/transfer";
 

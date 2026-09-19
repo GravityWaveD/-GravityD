@@ -24,19 +24,20 @@ syncInsforgeToken();
 
 export async function insforgeRequest<T>(
   path: string,
-  init: RequestInit & { json?: unknown } = {}
+  init: RequestInit & { json?: unknown; skipAccessToken?: boolean } = {}
 ): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set("Content-Type", "application/json");
-  const token = Auth.getAccessToken();
+  const token = init.skipAccessToken ? "" : Auth.getAccessToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
   else if (anonKey) headers.set("Authorization", `Bearer ${anonKey}`);
 
+  const { skipAccessToken: _skip, json, ...rest } = init;
   const response = await fetch(`${baseUrl}${path}`, {
-    ...init,
+    ...rest,
     headers,
     credentials: "omit",
-    body: init.json !== undefined ? JSON.stringify(init.json) : init.body,
+    body: json !== undefined ? JSON.stringify(json) : init.body,
   });
   const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
   if (!response.ok) {

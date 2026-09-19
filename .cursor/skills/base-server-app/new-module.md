@@ -2,9 +2,18 @@
 
 以「客户 CRM」为例：域 `crm`，资源 `customer`，菜单 id 从 `100` 起。
 
+推荐先生成再改字段（完整 CLI 说明见 [docs/gravityd-cli.md](../../../docs/gravityd-cli.md)）：
+
+```bash
+npx --yes ./packages/gravityd-cli link --project-id local -y
+npx --yes ./packages/gravityd-cli module add --domain crm --resource customer --title 客户 --fields mobile:text --dry-run
+npx --yes ./packages/gravityd-cli module add --domain crm --resource customer --title 客户 --fields mobile:text
+npx --yes ./packages/gravityd-cli migrate apply --file 009_crm_customer.sql
+```
+
 ## 1. SQL
 
-新建 `insforge-app/migrations/007_crm_customer.sql`（数字取当前最大 + 1；`006` 已被品牌占用）。
+新建 `insforge-app/migrations/009_crm_customer.sql`（数字取当前最大 + 1；`007`/`008` 已被安全和 Agent 占用）。
 
 ```sql
 CREATE TABLE IF NOT EXISTS public.crm_customer (
@@ -12,7 +21,7 @@ CREATE TABLE IF NOT EXISTS public.crm_customer (
   name TEXT NOT NULL,
   mobile TEXT,
   owner_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
-  "order" INTEGER NOT NULL DEFAULT 999,
+  sort_order INTEGER NOT NULL DEFAULT 999,
   status INTEGER NOT NULL DEFAULT 0,
   description TEXT,
   created_time TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -22,9 +31,11 @@ CREATE TABLE IF NOT EXISTS public.crm_customer (
 CREATE INDEX IF NOT EXISTS idx_crm_customer_owner ON public.crm_customer(owner_id);
 
 ALTER TABLE public.crm_customer ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS authenticated_all ON public.crm_customer;
-CREATE POLICY authenticated_all ON public.crm_customer
-  FOR ALL TO authenticated USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS crm_customer_owner_or_admin ON public.crm_customer;
+CREATE POLICY crm_customer_owner_or_admin ON public.crm_customer
+  FOR ALL TO authenticated
+  USING (owner_id = public.current_user_id() OR owner_id IS NULL OR public.is_superuser())
+  WITH CHECK (owner_id = public.current_user_id() OR owner_id IS NULL OR public.is_superuser());
 
 -- 菜单：100 目录 / 101 页面 / 102+ 按钮
 DELETE FROM public.sys_role_menus WHERE menu_id >= 100 AND menu_id < 110;
@@ -59,14 +70,14 @@ ON CONFLICT DO NOTHING;
 NOTIFY pgrst, 'reload schema';
 ```
 
-字段惯例：`status` 0 正常；`"order"` 越小越前；审计用 `created_time` / `updated_time`。关联用户一律 UUID → `profiles(id)`。
+字段惯例：`status` 0 正常；`sort_order` 越小越前；审计用 `created_time` / `updated_time`。关联用户一律 UUID → `profiles(id)`。
 
 ## 2. 应用迁移
 
 ```bash
 cd insforge
 docker compose exec -T postgres psql -U postgres -d insforge -v ON_ERROR_STOP=1 \
-  < ../insforge-app/migrations/007_crm_customer.sql
+  < ../insforge-app/migrations/009_crm_customer.sql
 ```
 
 不要跑 `insforge-app/scripts/apply.sh`。

@@ -1,16 +1,19 @@
 import { insforge } from "@/utils/insforge";
-import { ok, pageOf, rangeOf, unwrap } from "@/utils/insforge-api";
+import { ok, serverPageOf, unwrap } from "@/utils/insforge-api";
 
 const PositionAPI = {
   async listPosition(query?: PositionPageQuery) {
-    const { pageNo, pageSize } = rangeOf(query?.page_no, query?.page_size);
-    let builder = insforge.database.from("sys_position").select("*");
+    let builder = insforge.database.from("sys_position").select("*", { count: "exact" });
     if (query?.name) builder = builder.ilike("name", `%${query.name}%`);
     if (query?.status !== undefined && query.status !== null && query.status !== ("" as unknown as number)) {
       builder = builder.eq("status", query.status);
     }
-    const rows = ((unwrap(await builder) as PositionTable[]) || []).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-    return ok(pageOf(rows.slice((pageNo - 1) * pageSize, pageNo * pageSize), rows.length, pageNo, pageSize));
+    return serverPageOf<PositionTable>(builder, {
+      pageNo: query?.page_no,
+      pageSize: query?.page_size,
+      sortField: "order",
+      ascending: true,
+    });
   },
 
   async detailPosition(id: number) {

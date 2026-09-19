@@ -112,6 +112,8 @@ apply_schema() {
   apply_sql "$MIG_DIR/004_seed_extra.sql"
   apply_sql "$MIG_DIR/005_insforge_menu.sql"
   apply_sql "$MIG_DIR/006_brand_gravityd.sql"
+  apply_sql "$MIG_DIR/007_secure_rls.sql"
+  apply_sql "$MIG_DIR/008_agent_runtime.sql"
 }
 
 write_web_env() {

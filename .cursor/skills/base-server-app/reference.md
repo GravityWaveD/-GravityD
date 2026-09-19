@@ -5,7 +5,7 @@
 - 壳：GravityD / Vue3（`frontend/web`，Vite，hash 路由，`BASE_URL=/web`）
 - 后端：仓库内自托管 InsForge（`insforge/`，gitignore），Compose 项目名 `gravityd-insforge`
 - 业务库：InsForge Postgres（`public.*` + `auth.users`）
-- FastAPI 源码留在 `backend/`，**8001 已停，新功能不要打 `/api/v1`**
+- 旧 FastAPI 目录已删除。**不要启动 8001**，新功能不要打 `/api/v1`
 
 ## 端口（本机）
 
@@ -19,6 +19,8 @@
 | 别人的 Redis | `6379` — 不要动 |
 
 启动：`bash scripts/insforge-up.sh`。不要把 InsForge 嵌进 `docker/docker-compose.yaml`。不要在仓库根跑官方 `setup.sh`（会破坏本仓库 git）。
+
+二次开发 CLI：`npx --yes ./packages/gravityd-cli link --project-id local -y`（对标 InsForge `link`，写 `.gravityd/project.json`，不写密钥）。
 
 ## 账号
 
@@ -61,8 +63,10 @@ cd frontend/web
 | `004_seed_extra.sql` | 菜单 50–88 + 种子 | DELETE 已限制 `id >= 50 AND id < 90` |
 | `005_insforge_menu.sql` | 菜单 90–94 | DELETE 已限制 `90–99` |
 | `006_brand_gravityd.sql` | 品牌改 GravityD | 可 |
+| `007_secure_rls.sql` | 生产级 RLS（防提权、系统表防写） | 可 |
+| `008_agent_runtime.sql` | Multi-Agent 会话表 | 可 |
 
-应用增量：`bash insforge-app/scripts/apply-extra.sh`（003–006）。新文件单独 `psql`，或把文件名追加进 `apply-extra.sh`（不要写进 `apply.sh`）。下一条业务迁移从 **007** 起。
+应用增量：`bash insforge-app/scripts/apply-extra.sh`（003–008）。新文件用 `npx --yes ./packages/gravityd-cli migrate apply --file 0xx_....sql`，或单独 `psql`。不要写进 `apply.sh`。下一条业务迁移从 **009** 起。
 
 ```bash
 cd insforge

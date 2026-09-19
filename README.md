@@ -11,11 +11,16 @@
 
 GravityD 是团队内部的 **后台开发脚手架**。新业务项目从本仓库拉起，而不是从零搭登录、RBAC 和 CRUD。
 
-运行时后端是仓库内 **自托管 InsForge**（Auth + Postgres + RLS）。`backend/` 里的 FastAPI 源码保留作参考，**默认不再启动 8001**。
+运行时后端是仓库内 **自托管 InsForge**（Auth + Postgres + RLS）。旧 FastAPI 目录已移除，不要再启动 8001。
 
-人读的开发手册：[docs/开发指南.md](docs/开发指南.md)（环境、迁移、菜单、加模块、验收）。
+人读的开发手册：[docs/开发指南.md](docs/开发指南.md)（环境、迁移、菜单、加模块、验收）。CLI：[docs/gravityd-cli.md](docs/gravityd-cli.md)。
 
-Agent 加模块时走 [`.cursor/skills/base-server-app`](.cursor/skills/base-server-app/SKILL.md)。
+Agent 加模块时走 [`.cursor/skills/base-server-app`](.cursor/skills/base-server-app/SKILL.md)。二次开发 CLI（对标 `npx @insforge/cli link`）：
+
+```bash
+npx --yes ./packages/gravityd-cli link --project-id local -y
+npx --yes ./packages/gravityd-cli module add --domain crm --resource customer --title 客户 --dry-run
+```
 
 ## 本地 5 分钟
 
@@ -63,6 +68,7 @@ bash scripts/deploy.sh    # 增量迁移 + 构建 frontend/web/dist
 | `scripts/dev.sh` | 确保 InsForge 起来后启动 Vite |
 | `scripts/deploy.sh` | 启栈、套增量 SQL（**不重跑 002**）、生产构建 |
 | `scripts/insforge-up.sh` | 只拉起已有 InsForge compose |
+| `scripts/gravityd` | `@gravityd/cli` 入口：`link` / `module add` / `migrate apply` |
 
 **禁止**重跑 `insforge-app/migrations/002_seed_system.sql`（会 TRUNCATE 业务表）。**禁止**在仓库根执行官方 InsForge `setup.sh`。
 
@@ -74,14 +80,18 @@ GravityD/
 ├─ frontend/app/                 # UniApp 移动端壳（可选）
 ├─ insforge/                     # 自托管 InsForge（gitignore，init 时克隆）
 ├─ insforge-app/migrations/      # 业务表 / RLS / 菜单种子
-├─ scripts/                      # init / dev / deploy
-├─ .cursor/skills/base-server-app/
-└─ backend/                      # 旧 FastAPI，默认不启动
+├─ packages/gravityd-cli/        # 二次开发 CLI（npx ./packages/gravityd-cli）
+├─ scripts/                      # init / dev / deploy / gravityd
+└─ .cursor/skills/base-server-app/
 ```
 
 ## 加一个业务模块
 
-对照 `frontend/web/src/api/module_system/position.ts` 与岗位页。菜单 id **从 100 起**。清单见 [new-module.md](.cursor/skills/base-server-app/new-module.md)。
+对照 `frontend/web/src/api/module_system/position.ts` 与岗位页。菜单 id **从 100 起**。清单见 [new-module.md](.cursor/skills/base-server-app/new-module.md)。脚手架：
+
+```bash
+npx --yes ./packages/gravityd-cli module add --domain crm --resource customer --title 客户
+```
 
 不要迁进侧栏：代码生成、工作流、定时任务、AI、内部聊天、服务器/缓存监控。
 

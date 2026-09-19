@@ -1,4 +1,7 @@
 import { http } from '@/http'
+import { Storage } from '@/utils/storage'
+import { ACCESS_TOKEN_KEY } from '@/constants'
+import { insforgeRequest } from '@/utils/insforge'
 
 const USER_BASE_URL = '/system/user'
 
@@ -12,8 +15,33 @@ const UserAPI = {
    *
    * @returns 登录用户昵称、头像信息，包括角色和权限
    */
-  getCurrentUserInfo(): Promise<UserInfo> {
-    return http.Get(`${USER_BASE_URL}/current/info`)
+  async getCurrentUserInfo(): Promise<UserInfo> {
+    let id = ''
+    try {
+      const me = await insforgeRequest<{ user?: { id?: string } }>('/api/auth/users/me')
+      id = me.user?.id || ''
+    }
+    catch {
+      id = ''
+    }
+    if (!id) {
+      const token = Storage.get<string>(ACCESS_TOKEN_KEY) || ''
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))
+        id = payload.sub || payload.user_id || ''
+      }
+      catch {
+        throw new Error('未登录或会话已失效')
+      }
+    }
+    const profileRes = await insforgeRequest<{ records?: UserInfo[] } | UserInfo[]>(
+      `/api/database/records/profiles?id=eq.${id}`,
+    )
+    const rows = Array.isArray(profileRes) ? profileRes : profileRes.records || []
+    const profile = rows[0]
+    if (!profile)
+      throw new Error('用户不存在')
+    return profile
   },
 
   /**

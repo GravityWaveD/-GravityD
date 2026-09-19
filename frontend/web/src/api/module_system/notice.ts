@@ -1,17 +1,20 @@
 import { insforge } from "@/utils/insforge";
-import { ok, pageOf, rangeOf, unwrap } from "@/utils/insforge-api";
+import { ok, serverPageOf, unwrap } from "@/utils/insforge-api";
 
 const NoticeAPI = {
   async listNotice(query: NoticePageQuery) {
-    const { pageNo, pageSize } = rangeOf(query.page_no, query.page_size);
-    let builder = insforge.database.from("sys_notice").select("*");
+    let builder = insforge.database.from("sys_notice").select("*", { count: "exact" });
     if (query.notice_title) builder = builder.ilike("notice_title", `%${query.notice_title}%`);
     if (query.notice_type) builder = builder.eq("notice_type", query.notice_type);
     if (query.status !== undefined && query.status !== null && query.status !== ("" as unknown as number)) {
       builder = builder.eq("status", query.status);
     }
-    const rows = ((unwrap(await builder) as NoticeTable[]) || []).sort((a, b) => (b.id ?? 0) - (a.id ?? 0));
-    return ok(pageOf(rows.slice((pageNo - 1) * pageSize, pageNo * pageSize), rows.length, pageNo, pageSize));
+    return serverPageOf<NoticeTable>(builder, {
+      pageNo: query.page_no,
+      pageSize: query.page_size,
+      sortField: "id",
+      ascending: false,
+    });
   },
 
   async listNoticeAvailable() {

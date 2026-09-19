@@ -1,6 +1,6 @@
 import { insforge } from "@/utils/insforge";
 import { Auth } from "@/utils/auth";
-import { ok, pageOf, rangeOf, unwrap } from "@/utils/insforge-api";
+import { ok, serverPageOf, unwrap } from "@/utils/insforge-api";
 
 function jwtSub(): string | null {
   try {
@@ -15,15 +15,16 @@ function jwtSub(): string | null {
 
 const OnlineAPI = {
   async listOnline(query: OnlineUserPageQuery) {
-    const { pageNo, pageSize } = rangeOf(query.page_no, query.page_size);
-    let builder = insforge.database.from("sys_online").select("*");
+    let builder = insforge.database.from("sys_online").select("*", { count: "exact" });
     if (query.name) builder = builder.ilike("name", `%${query.name}%`);
     if (query.ipaddr) builder = builder.ilike("ipaddr", `%${query.ipaddr}%`);
     if (query.login_location) builder = builder.ilike("login_location", `%${query.login_location}%`);
-    const rows = ((unwrap(await builder) as OnlineUserTable[]) || []).sort(
-      (a, b) => String(b.login_time || "").localeCompare(String(a.login_time || ""))
-    );
-    return ok(pageOf(rows.slice((pageNo - 1) * pageSize, pageNo * pageSize), rows.length, pageNo, pageSize));
+    return serverPageOf<OnlineUserTable>(builder, {
+      pageNo: query.page_no,
+      pageSize: query.page_size,
+      sortField: "login_time",
+      ascending: false,
+    });
   },
 
   async deleteOnline(sessionId: string) {

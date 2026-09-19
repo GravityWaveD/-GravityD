@@ -1,8 +1,8 @@
 import { type MenuTable, type MenuForm } from "@/api/module_system/menu";
-import { insforge, insforgeRequest, toLoginEmail } from "@/utils/insforge";
+import { insforge, insforgeRequest, toLoginEmail, syncInsforgeToken } from "@/utils/insforge";
 import { Auth } from "@/utils/auth";
 import { ApiStatus, HttpError } from "@/utils/http";
-import { buildTree, ok, pageOf, rangeOf, unwrap } from "@/utils/insforge-api";
+import { buildTree, ok, serverPageOf, unwrap } from "@/utils/insforge-api";
 import { touchOnline } from "@/utils/insforge-presence";
 
 type ProfileRow = UserInfo & { id: string };
@@ -10,6 +10,7 @@ type ProfileRow = UserInfo & { id: string };
 function jwtSub(token: string): string | null {
   try {
     const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    if (typeof payload.exp === "number" && payload.exp * 1000 < Date.now()) return null;
     return payload.sub || payload.user_id || null;
   } catch {
     return null;
@@ -17,6 +18,7 @@ function jwtSub(token: string): string | null {
 }
 
 async function currentUserId(): Promise<string> {
+  syncInsforgeToken();
   const { data } = await insforge.auth.getCurrentUser();
   if (data?.user?.id) return data.user.id;
   const sub = jwtSub(Auth.getAccessToken());
@@ -84,9 +86,14 @@ async function hydrateUser(profile: ProfileRow): Promise<UserInfo> {
   };
 }
 
+function asRows<T>(data: T | T[] | null | undefined): T[] {
+  if (data == null) return [];
+  return Array.isArray(data) ? data : [data];
+}
+
 async function fetchProfile(id: string | number): Promise<ProfileRow> {
-  const rows = unwrap(await insforge.database.from("profiles").select("*").eq("id", id)) as ProfileRow[];
-  if (!rows?.[0]) throw new Error("用户不存在");
+  const rows = asRows(unwrap(await insforge.database.from("profiles").select("*").eq("id", id)) as ProfileRow | ProfileRow[]);
+  if (!rows[0]) throw new Error("用户不存在");
   return rows[0];
 }
 
@@ -168,8 +175,7 @@ export const UserAPI = {
   },
 
   async listUser(query: UserPageQuery) {
-    const { pageNo, pageSize } = rangeOf(query.page_no, query.page_size);
-    let builder = insforge.database.from("profiles").select("*");
+    let builder = insforge.database.from("profiles").select("*", { count: "exact" });
     if (query.username) builder = builder.ilike("username", `%${query.username}%`);
     if (query.name) builder = builder.ilike("name", `%${query.name}%`);
     if (query.email) builder = builder.ilike("email", `%${query.email}%`);
@@ -178,12 +184,13 @@ export const UserAPI = {
       builder = builder.eq("status", query.status);
     }
     if (query.dept_id) builder = builder.eq("dept_id", query.dept_id);
-    const rows = ((unwrap(await builder) as ProfileRow[]) || []).slice();
-    const total = rows.length;
-    const items = await Promise.all(
-      rows.slice((pageNo - 1) * pageSize, pageNo * pageSize).map((row) => hydrateUser(row))
-    );
-    return ok(pageOf(items, total, pageNo, pageSize));
+    return serverPageOf<UserInfo>(builder, {
+      pageNo: query.page_no,
+      pageSize: query.page_size,
+      sortField: "created_time",
+      ascending: false,
+      mapItems: (items) => Promise.all((items as ProfileRow[]).map((row) => hydrateUser(row))),
+    });
   },
 
   async detailUser(id: number) {

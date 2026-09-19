@@ -17,6 +17,7 @@ import { MenuProcessor } from "./MenuProcessor";
 import { NProgress } from "@utils/ui";
 import { Auth } from "@utils/auth";
 import { isHttpError, ApiStatus } from "@utils/http";
+import { isInsforgeAuthError } from "@/utils/insforge-api";
 import { refreshState } from "./refresh";
 import { getMainScrollEl } from "@/hooks/core/useCommon";
 
@@ -34,6 +35,14 @@ const ANONYMOUS_PUBLIC_REGEXPS = [
   /^\/redirect/,
   /^\/login$/,
 ];
+function isAuthFailure(error: unknown): boolean {
+  if (isInsforgeAuthError(error)) return true;
+  return (
+    isHttpError(error) &&
+    (error.code === ApiStatus.unauthorized || error.code === ApiStatus.forbidden)
+  );
+}
+
 function isAnonymousPublicPath(path: string): boolean {
   return ANONYMOUS_PUBLIC_REGEXPS.some((regexp) => regexp.test(path));
 }
@@ -185,12 +194,13 @@ async function handleDynamicRoutes(
     return undefined;
   } catch (error) {
     console.error("[路由守卫] 路由初始化失败:", error);
-    // 认证失败（如生产环境部署后旧 token 失效）跳转登录页，不标记为路由初始化失败
-    if (
-      isHttpError(error) &&
-      (error.code === ApiStatus.unauthorized || error.code === ApiStatus.forbidden)
-    ) {
+    // 过期 JWT：InsForge 返回 "Invalid token"，不是 HttpError。必须清会话再去登录，
+    // 否则 isLoggedIn() 仍为 true，会把 /login 踢回首页再失败。
+    if (isAuthFailure(error)) {
       refreshState.dynamicRoutesRegistered = false;
+      refreshState.routeInitFailed = false;
+      Auth.clearAuth();
+      useUserStore().resetAllState();
       return "/login";
     }
     refreshState.routeInitFailed = true;

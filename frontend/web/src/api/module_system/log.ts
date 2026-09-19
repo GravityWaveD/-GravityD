@@ -1,10 +1,9 @@
 import { insforge } from "@/utils/insforge";
-import { ok, pageOf, rangeOf, unwrap } from "@/utils/insforge-api";
+import { ok, serverPageOf, unwrap } from "@/utils/insforge-api";
 
 const OperationLogAPI = {
   async list(query?: OperationLogPageQuery) {
-    const { pageNo, pageSize } = rangeOf(query?.page_no, query?.page_size);
-    let builder = insforge.database.from("sys_operation_log").select("*");
+    let builder = insforge.database.from("sys_operation_log").select("*", { count: "exact" });
     if (query?.username) builder = builder.ilike("username", `%${query.username}%`);
     if (query?.request_path) builder = builder.ilike("request_path", `%${query.request_path}%`);
     if (query?.request_method) builder = builder.eq("request_method", query.request_method);
@@ -12,10 +11,12 @@ const OperationLogAPI = {
     if (query?.status !== undefined && query.status !== null && query.status !== ("" as unknown as number)) {
       builder = builder.eq("status", query.status);
     }
-    const rows = ((unwrap(await builder) as OperationLogTable[]) || []).sort(
-      (a, b) => String(b.created_time || "").localeCompare(String(a.created_time || ""))
-    );
-    return ok(pageOf(rows.slice((pageNo - 1) * pageSize, pageNo * pageSize), rows.length, pageNo, pageSize));
+    return serverPageOf<OperationLogTable>(builder, {
+      pageNo: query?.page_no,
+      pageSize: query?.page_size,
+      sortField: "created_time",
+      ascending: false,
+    });
   },
 
   async detail(id: number) {
@@ -61,16 +62,17 @@ export interface OperationLogTable {
 
 export const LoginLogAPI = {
   async list(query?: LoginLogPageQuery) {
-    const { pageNo, pageSize } = rangeOf(query?.page_no, query?.page_size);
-    let builder = insforge.database.from("sys_login_log").select("*");
+    let builder = insforge.database.from("sys_login_log").select("*", { count: "exact" });
     if (query?.username) builder = builder.ilike("username", `%${query.username}%`);
     if (query?.status !== undefined && query.status !== null && query.status !== ("" as unknown as number)) {
       builder = builder.eq("status", query.status);
     }
-    const rows = ((unwrap(await builder) as LoginLogTable[]) || []).sort(
-      (a, b) => String(b.created_time || "").localeCompare(String(a.created_time || ""))
-    );
-    return ok(pageOf(rows.slice((pageNo - 1) * pageSize, pageNo * pageSize), rows.length, pageNo, pageSize));
+    return serverPageOf<LoginLogTable>(builder, {
+      pageNo: query?.page_no,
+      pageSize: query?.page_size,
+      sortField: "created_time",
+      ascending: false,
+    });
   },
 
   async detail(id: number) {

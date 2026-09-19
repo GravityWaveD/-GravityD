@@ -17,10 +17,18 @@ description: >-
 
 不要复活 FastAPI `8001` 当主后端。不要在仓库根执行官方 `setup.sh` 或 `pnpm add`。
 
+二次开发 CLI 对标 `npx @insforge/cli link --project-id <id>`。本仓库没有云端 project-id，`link` 只写 `.gravityd/project.json`（gitignore，**不写密钥**）：
+
+```bash
+npx --yes ./packages/gravityd-cli link --project-id local -y
+npx --yes ./packages/gravityd-cli module add --domain crm --resource customer --title 客户 --dry-run
+```
+
 先读完本文件再改代码。细节按需打开：
 
 - 环境、端口、禁令、账号：[reference.md](reference.md)
 - 新模块完整清单（表 + 菜单 + API + 页）：[new-module.md](new-module.md)
+- CLI 开发使用说明：仓库内 [docs/gravityd-cli.md](../../../docs/gravityd-cli.md)
 - SDK 通用用法：已安装的 `insforge` skill（`@insforge/sdk`）。依赖只装在 `frontend/web`。
 
 ## 开工前
@@ -29,29 +37,30 @@ description: >-
 2. 前端：在 `frontend/web` 执行 `./node_modules/.bin/vite --mode development` → http://127.0.0.1:5180/web
 3. 后台账号 `admin@local.dev` / `123456`。旧 token 先清 `localStorage`。
 4. 本机 `5432` / `6379` 等容器是别人的，**不要停、不要改端口抢占**。InsForge Postgres 必须是 `5433`。
+5. 二次开发：`npx --yes ./packages/gravityd-cli link --project-id local -y`，再用 `module add` / `migrate apply`。
 
 大域新业务可按用户 6A 规范写 `docs/<任务名>/`。普通 CRUD 直接走 [new-module.md](new-module.md)。
 
 ## 硬约束
 
 - 用户主键对齐 `auth.users(id)`（UUID）。业务表用 `profiles.id`，不要自建密码字段。
-- 列表：`select('*')` 后**内存过滤 / 排序 / 分页**。禁止 `{ count: 'exact' } + range`（`head: true` 的行数统计除外）。
-- 列名 `"order"` 禁止 `.order('order')`，内存排序。
-- API 包装必须走 `frontend/web/src/utils/insforge-api.ts` 的 `ok()` / `unwrap()` / `pageOf()` / `rangeOf()` / `buildTree()`。`ok()` 的 `code` 必须是 `ResultEnum.SUCCESS = 0`。
+- 列表走 `serverPageOf()`：`select('*', { count: 'exact' })` + `range`。禁止全表拉取后内存 `sort`/`slice`。
+- 列名 `"order"` 禁止 `.order('order')`；新表用 `sort_order`。旧表传 `sortField: 'order'` 时 `serverPageOf` 会回退到 `id`。
+- API 包装必须走 `frontend/web/src/utils/insforge-api.ts` 的 `ok()` / `unwrap()` / `pageOf()` / `rangeOf()` / `serverPageOf()` / `buildTree()`。`ok()` 的 `code` 必须是 `ResultEnum.SUCCESS = 0`。
 - 客户端只用 `frontend/web/src/utils/insforge.ts` 的 `createClient({ baseUrl, anonKey, isServerMode: true })`。
 - 未登录用 `HttpError(401)`（见 `currentUserId()`），不要吞掉后让页面空白。
 - 导出 / 导入 / 上传未做就 `throw new Error("未迁移导出")`，不要假装打 FastAPI。
 - **不要重跑** `002_seed_system.sql`（会 `TRUNCATE ... CASCADE` 清掉 profiles）。
 - 菜单增量 `DELETE` 必须带 id 范围，避免误删其它模块。
 - 新迁移末尾加 `NOTIFY pgrst, 'reload schema';`
-- 不要提交 `.env`、`insforge/.env`、`fastapiadmin.db*`、密钥。
+- 不要提交 `.env`、`insforge/.env`、密钥。
 
 ## 目录约定
 
 | 用途 | 路径 |
 |---|---|
 | 表 / RLS / 种子 | `insforge-app/migrations/0xx_*.sql` |
-| 已有增量脚本 | `insforge-app/scripts/apply-extra.sh`（003–006） |
+| 已有增量脚本 | `insforge-app/scripts/apply-extra.sh`（003–008） |
 | 前端 API | `frontend/web/src/api/module_<域>/<资源>.ts` |
 | 页面 | `frontend/web/src/views/module_<域>/<资源>/index.vue` |
 | SDK 入口 | `frontend/web/src/utils/insforge.ts` |
@@ -66,10 +75,10 @@ description: >-
 复制清单并打勾：
 
 ```
-- [ ] SQL：表 + 索引 + RLS + 菜单 + SUPER_ADMIN 授权
-- [ ] 应用迁移（docker compose exec psql，不要跑 002）
-- [ ] API：insforge.database + ok/unwrap，对照 position.ts
-- [ ] 页面：复制 module_system/position，改 API / 权限码 / 列
+- [ ] gravityd link（若尚未绑定）
+- [ ] gravityd module add --domain <域> --resource <资源> --title <中文> --dry-run
+- [ ] gravityd module add ...（写 SQL / API / Vue）
+- [ ] gravityd migrate apply --file 0xx_....sql（不要跑 002）
 - [ ] 菜单 route_path / component_path / permission 对齐
 - [ ] 浏览器点侧栏走通列表与新增
 ```

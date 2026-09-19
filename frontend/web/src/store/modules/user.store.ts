@@ -16,6 +16,8 @@ import { store, useDictStore } from "@stores";
 import type { UserInfo } from "@/api/module_system/user";
 import { ResultEnum } from "@/enums/api/result.enum";
 import { resetRouteInitState, resetRouterState } from "@/router/refresh";
+import { isInsforgeAuthError } from "@/utils/insforge-api";
+import { syncInsforgeToken } from "@/utils/insforge";
 
 /** {@link useUserStore} 的 `logout` 可选参数 */
 export interface LogoutOptions {
@@ -157,16 +159,30 @@ export const useUserStore = defineStore(
      */
     async function getUserInfo() {
       try {
-        const response = await UserAPI.getCurrentUserInfo();
-        const data = response.data.data;
-        const menus: MenuTable[] = data?.menus || [];
-        delete data?.menus;
-        info.value = { ...info.value, ...data } as Partial<UserInfo>;
-        setRoute(menus);
+        await loadCurrentUser();
       } catch (error) {
+        if (isInsforgeAuthError(error) && Auth.getRefreshToken()) {
+          try {
+            await refreshTokenFn();
+            await loadCurrentUser();
+            return;
+          } catch (refreshError) {
+            console.error("获取用户信息失败:", refreshError);
+            throw refreshError;
+          }
+        }
         console.error("获取用户信息失败:", error);
         throw error;
       }
+    }
+
+    async function loadCurrentUser() {
+      const response = await UserAPI.getCurrentUserInfo();
+      const data = response.data.data;
+      const menus: MenuTable[] = data?.menus || [];
+      delete data?.menus;
+      info.value = { ...info.value, ...data } as Partial<UserInfo>;
+      setRoute(menus);
     }
 
     /**
@@ -314,6 +330,7 @@ export const useUserStore = defineStore(
      */
     function resetAllState() {
       Auth.clearAuth();
+      syncInsforgeToken(null);
       info.value = {};
       routeList.value = [];
       hasGetRoute.value = false;
@@ -351,6 +368,7 @@ export const useUserStore = defineStore(
       // 更新令牌，保持当前记住我状态
       Auth.setTokens(data.access_token, data.refresh_token, Auth.getRememberMe());
       setToken(data.access_token, data.refresh_token);
+      syncInsforgeToken(data.access_token);
     }
 
     /**

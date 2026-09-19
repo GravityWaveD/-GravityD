@@ -26,6 +26,8 @@ import zhCn from "element-plus/es/locale/lang/zh-cn";
 import { router } from "@/router";
 import { ElNotification } from "element-plus";
 import { initIconifyAsync } from "./plugins/iconify";
+import { isInsforgeAuthError } from "@/utils/insforge-api";
+import { redirectToLogin } from "@/utils/auth";
 
 const appStore = useAppStore();
 const { width } = useWindowSize();
@@ -138,8 +140,13 @@ onUnmounted(() => {
 
 // ─── 全局错误边界 ───
 onErrorCaptured((err, _instance, info) => {
+  // 过期 JWT：InsForge 在组件 beforeMount 里会抛 Invalid token，不是 UI 渲染坏了
+  if (isInsforgeAuthError(err)) {
+    console.warn(`[ErrorBoundary] ${info}:`, err);
+    void redirectToLogin("登录已失效，请重新登录");
+    return false;
+  }
   console.error(`[ErrorBoundary] ${info}:`, err);
-  // 开发环境弹窗提示，生产环境静默上报
   if (import.meta.env.DEV) {
     ElNotification({
       title: "组件渲染异常",
@@ -148,6 +155,6 @@ onErrorCaptured((err, _instance, info) => {
       duration: 5000,
     });
   }
-  return false; // 阻止异常向上冒泡
+  return false;
 });
 </script>

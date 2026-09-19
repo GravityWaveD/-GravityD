@@ -35,3 +35,10 @@ Point Nginx at `frontend/web/dist`. Set public `VITE_INSFORGE_URL` / `VITE_INSFO
 Do **not** re-run `002_seed_system.sql`. Do **not** run the official InsForge `setup.sh` at the repo root.
 
 New business menus start at id `100`. See `.cursor/skills/base-server-app`.
+
+CLI usage (Chinese): [docs/gravityd-cli.md](docs/gravityd-cli.md). Analog of `npx @insforge/cli link --project-id <id>`:
+
+```bash
+npx --yes ./packages/gravityd-cli link --project-id local -y
+npx --yes ./packages/gravityd-cli module add --domain crm --resource customer --title Customer --dry-run
+```

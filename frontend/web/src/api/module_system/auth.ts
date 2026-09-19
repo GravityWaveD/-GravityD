@@ -53,7 +53,7 @@ const AuthAPI = {
   async refreshToken(refreshToken: string) {
     const session = await insforgeRequest<{ accessToken: string; refreshToken?: string }>(
       "/api/auth/refresh?client_type=server",
-      { method: "POST", json: { refreshToken } }
+      { method: "POST", json: { refreshToken }, skipAccessToken: true }
     );
     return ok<JWTOut>({
       access_token: session.accessToken,

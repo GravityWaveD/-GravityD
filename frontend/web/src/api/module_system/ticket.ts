@@ -1,5 +1,5 @@
 import { insforge } from "@/utils/insforge";
-import { ok, pageOf, rangeOf, unwrap } from "@/utils/insforge-api";
+import { ok, serverPageOf, unwrap } from "@/utils/insforge-api";
 
 async function hydrateTicket(row: TicketTable): Promise<TicketTable> {
   if (!row.assigned_id) return row;
@@ -15,20 +15,20 @@ async function hydrateTicket(row: TicketTable): Promise<TicketTable> {
 
 const TicketAPI = {
   async listTicket(query?: TicketPageQuery) {
-    const { pageNo, pageSize } = rangeOf(query?.page_no, query?.page_size);
-    let builder = insforge.database.from("sys_ticket").select("*");
+    let builder = insforge.database.from("sys_ticket").select("*", { count: "exact" });
     if (query?.title) builder = builder.ilike("title", `%${query.title}%`);
     if (query?.ticket_type) builder = builder.eq("ticket_type", query.ticket_type);
     if (query?.assigned_id) builder = builder.eq("assigned_id", query.assigned_id);
     if (query?.status !== undefined && query.status !== null && query.status !== ("" as unknown as number)) {
       builder = builder.eq("status", query.status);
     }
-    const rows = ((unwrap(await builder) as TicketTable[]) || []).sort(
-      (a, b) => String(b.created_time || "").localeCompare(String(a.created_time || ""))
-    );
-    const page = rows.slice((pageNo - 1) * pageSize, pageNo * pageSize);
-    const items = await Promise.all(page.map((row) => hydrateTicket(row)));
-    return ok(pageOf(items, rows.length, pageNo, pageSize));
+    return serverPageOf<TicketTable>(builder, {
+      pageNo: query?.page_no,
+      pageSize: query?.page_size,
+      sortField: "created_time",
+      ascending: false,
+      mapItems: (items) => Promise.all(items.map((row) => hydrateTicket(row))),
+    });
   },
 
   async detailTicket(id: number) {
@@ -89,11 +89,13 @@ const TicketAPI = {
 };
 
 export async function getTicketComments(ticketId: number, params?: PageQuery) {
-  const { pageNo, pageSize } = rangeOf(params?.page_no, params?.page_size);
-  const rows = ((unwrap(
-    await insforge.database.from("sys_ticket_comment").select("*").eq("ticket_id", ticketId)
-  ) as TicketCommentTable[]) || []).sort((a, b) => String(a.created_time || "").localeCompare(String(b.created_time || "")));
-  return ok(pageOf(rows.slice((pageNo - 1) * pageSize, pageNo * pageSize), rows.length, pageNo, pageSize));
+  const builder = insforge.database.from("sys_ticket_comment").select("*", { count: "exact" }).eq("ticket_id", ticketId);
+  return serverPageOf<TicketCommentTable>(builder, {
+    pageNo: params?.page_no,
+    pageSize: params?.page_size,
+    sortField: "created_time",
+    ascending: true,
+  });
 }
 
 export async function createTicketComment(ticketId: number, data: TicketCommentCreateForm) {

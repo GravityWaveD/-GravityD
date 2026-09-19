@@ -1,4 +1,4 @@
-import { request } from "@utils";
+import { request } from "@/utils/legacy-fastapi";
 
 const API_PATH = "/example/demo";
 
