@@ -74,6 +74,7 @@ export function writeProject(root, project) {
     name: project.name || "GravityD",
     root: root,
     insforge_url: project.insforge_url,
+    provider: project.provider || "insforge",
     linked_at: project.linked_at || new Date().toISOString(),
     paths: {
       insforge: "insforge",

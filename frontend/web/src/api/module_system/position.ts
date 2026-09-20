@@ -1,9 +1,9 @@
-import { insforge } from "@/utils/insforge";
-import { ok, serverPageOf, unwrap } from "@/utils/insforge-api";
+import { baas } from "@/utils/baas";
+import { ok, serverPageOf, unwrap } from "@/utils/baas/api-helper";
 
 const PositionAPI = {
   async listPosition(query?: PositionPageQuery) {
-    let builder = insforge.database.from("sys_position").select("*", { count: "exact" });
+    let builder = baas.database.from("sys_position").select("*", { count: "exact" });
     if (query?.name) builder = builder.ilike("name", `%${query.name}%`);
     if (query?.status !== undefined && query.status !== null && query.status !== ("" as unknown as number)) {
       builder = builder.eq("status", query.status);
@@ -17,14 +17,14 @@ const PositionAPI = {
   },
 
   async detailPosition(id: number) {
-    const rows = unwrap(await insforge.database.from("sys_position").select("*").eq("id", id)) as PositionTable[];
+    const rows = unwrap(await baas.database.from("sys_position").select("*").eq("id", id)) as PositionTable[];
     if (!rows?.[0]) throw new Error("岗位不存在");
     return ok(rows[0]);
   },
 
   async createPosition(body: PositionForm) {
     unwrap(
-      await insforge.database.from("sys_position").insert([
+      await baas.database.from("sys_position").insert([
         {
           name: body.name,
           code: body.code,
@@ -39,7 +39,7 @@ const PositionAPI = {
 
   async updatePosition(id: number, body: PositionForm) {
     unwrap(
-      await insforge.database
+      await baas.database
         .from("sys_position")
         .update({
           name: body.name,
@@ -54,24 +54,24 @@ const PositionAPI = {
   },
 
   async deletePosition(body: number[]) {
-    unwrap(await insforge.database.from("sys_position").delete().in("id", body));
+    unwrap(await baas.database.from("sys_position").delete().in("id", body));
     return ok(null, "删除成功", true);
   },
 
   async batchPosition(body: BatchType) {
-    unwrap(await insforge.database.from("sys_position").update({ status: body.status }).in("id", body.ids));
+    unwrap(await baas.database.from("sys_position").update({ status: body.status }).in("id", body.ids));
     return ok(null, "更新成功", true);
   },
 
-  async exportPosition(_query: PositionPageQuery) {
+  async exportPosition(_query: PositionPageQuery): Promise<{ data: Blob }> {
     throw new Error("未迁移导出");
   },
 
   async getPositionOptions() {
     const rows =
-      (unwrap(await insforge.database.from("sys_position").select("id,name,code,status").eq("status", 0)) as PositionTable[]) ||
+      (unwrap(await baas.database.from("sys_position").select("id,name,code,status").eq("status", 0)) as PositionTable[]) ||
       [];
-    return ok(rows.map((row) => ({ value: row.id!, label: row.name || row.code || String(row.id) })));
+    return ok(rows.map((row) => ({ value: Number(row.id!), label: row.name || row.code || String(row.id) })));
   },
 };
 

@@ -1,6 +1,83 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { DEFAULT_INSFORGE_URL, DEFAULT_POSTGRES_PORT } from "./constants.mjs";
+import { fail } from "./io.mjs";
+
+export const BAAS_PROVIDERS = ["insforge", "firebase"];
+
+/**
+ * 规范化并校验 BaaS 提供商标识。
+ * @param {unknown} value 原始参数
+ * @param {string} [fallback="insforge"] 缺省值
+ * @returns {"insforge"|"firebase"}
+ */
+export function normalizeProvider(value, fallback = "insforge") {
+  const raw = value == null || value === "" ? fallback : value;
+  const provider = String(raw).trim().toLowerCase();
+  if (!BAAS_PROVIDERS.includes(provider)) {
+    throw fail("validation_error", `不支持的 BaaS 提供商: ${raw}（可选: insforge, firebase）`, {
+      field: "provider",
+    });
+  }
+  return provider;
+}
+
+/**
+ * 写入或更新 .env 中的单个键。
+ * @param {string} file 目标文件
+ * @param {string} key 环境变量名
+ * @param {string} value 值
+ * @param {{ onlyIfMissing?: boolean }} [options] onlyIfMissing 为真时不覆盖已有键
+ */
+export function upsertEnvFile(file, key, value, options = {}) {
+  mkdirSync(dirname(file), { recursive: true });
+  const current = existsSync(file) ? readFileSync(file, "utf8") : "";
+  const lines = current.split(/\r?\n/);
+  const pattern = new RegExp(`^${key}=`);
+  const exists = lines.some((line) => pattern.test(line));
+  if (exists) {
+    if (options.onlyIfMissing) return;
+    const next = lines.map((line) => (pattern.test(line) ? `${key}=${value}` : line)).join("\n");
+    writeFileSync(file, next.endsWith("\n") || next === "" ? next : `${next}\n`, "utf8");
+    return;
+  }
+  const prefix = current && !current.endsWith("\n") ? `${current}\n` : current;
+  writeFileSync(file, `${prefix}${key}=${value}\n`, "utf8");
+}
+
+/**
+ * 按选定提供商写入 frontend/web/.env.development，不写入密钥明文默认值以外的占位。
+ * @param {string} root GravityD 仓库根
+ * @param {"insforge"|"firebase"} provider 提供商
+ * @returns {string} 写入的 env 路径
+ */
+export function writeWebProviderEnv(root, provider) {
+  const dest = join(root, "frontend", "web", ".env.development");
+  const example = join(root, "frontend", "web", ".env.development.example");
+  if (!existsSync(dest) && existsSync(example)) {
+    copyFileSync(example, dest);
+  }
+  upsertEnvFile(dest, "VITE_APP_TITLE", "GravityD", { onlyIfMissing: true });
+  upsertEnvFile(dest, "VITE_BACKEND_PROVIDER", provider);
+  if (provider === "firebase") {
+    for (const key of [
+      "VITE_FIREBASE_API_KEY",
+      "VITE_FIREBASE_AUTH_DOMAIN",
+      "VITE_FIREBASE_PROJECT_ID",
+      "VITE_FIREBASE_STORAGE_BUCKET",
+      "VITE_FIREBASE_MESSAGING_SENDER_ID",
+      "VITE_FIREBASE_APP_ID",
+      "VITE_FIREBASE_MEASUREMENT_ID",
+    ]) {
+      upsertEnvFile(dest, key, process.env[key] || "", { onlyIfMissing: true });
+    }
+  } else {
+    upsertEnvFile(dest, "VITE_INSFORGE_URL", process.env.VITE_INSFORGE_URL || DEFAULT_INSFORGE_URL, {
+      onlyIfMissing: true,
+    });
+  }
+  return dest;
+}
 
 export function parseEnvFile(file) {
   if (!existsSync(file)) return {};

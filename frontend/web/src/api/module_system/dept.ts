@@ -1,9 +1,9 @@
-import { insforge } from "@/utils/insforge";
-import { buildTree, ok, unwrap } from "@/utils/insforge-api";
+import { baas } from "@/utils/baas";
+import { buildTree, ok, unwrap } from "@/utils/baas/api-helper";
 
 const DeptAPI = {
   async listDept(query?: DeptPageQuery) {
-    let builder = insforge.database.from("sys_dept").select("*");
+    let builder = baas.database.from("sys_dept").select("*");
     if (query?.name) builder = builder.ilike("name", `%${query.name}%`);
     if (query?.status !== undefined && query.status !== null) builder = builder.eq("status", query.status);
     const rows = ((unwrap(await builder) as DeptTable[]) || []).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -11,14 +11,14 @@ const DeptAPI = {
   },
 
   async detailDept(id: number) {
-    const rows = unwrap(await insforge.database.from("sys_dept").select("*").eq("id", id)) as DeptTable[];
+    const rows = unwrap(await baas.database.from("sys_dept").select("*").eq("id", id)) as DeptTable[];
     if (!rows?.[0]) throw new Error("部门不存在");
     return ok(rows[0]);
   },
 
   async createDept(body: DeptForm) {
     unwrap(
-      await insforge.database.from("sys_dept").insert([
+      await baas.database.from("sys_dept").insert([
         {
           name: body.name,
           code: body.code,
@@ -34,7 +34,7 @@ const DeptAPI = {
 
   async updateDept(id: number, body: DeptForm) {
     unwrap(
-      await insforge.database
+      await baas.database
         .from("sys_dept")
         .update({
           name: body.name,
@@ -50,12 +50,12 @@ const DeptAPI = {
   },
 
   async deleteDept(body: number[]) {
-    unwrap(await insforge.database.from("sys_dept").delete().in("id", body));
+    unwrap(await baas.database.from("sys_dept").delete().in("id", body));
     return ok(null, "删除成功", true);
   },
 
   async batchDept(body: BatchType) {
-    unwrap(await insforge.database.from("sys_dept").update({ status: body.status }).in("id", body.ids));
+    unwrap(await baas.database.from("sys_dept").update({ status: body.status }).in("id", body.ids));
     return ok(null, "更新成功", true);
   },
 };

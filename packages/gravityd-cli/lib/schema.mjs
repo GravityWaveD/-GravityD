@@ -26,11 +26,32 @@ export const COMMANDS = {
     since: "0.1.0",
     safety: "write-local",
     description: "把当前 GravityD 仓库写成 .gravityd/project.json（对标 insforge link，不写入密钥）",
-    usage: "gravityd link --project-id <id> [--url <insforge>] [-y]",
+    usage: "gravityd link --project-id <id> [--provider=insforge|firebase] [--url <insforge>] [-y]",
     params: {
       "project-id": { type: "string", required: true, description: "本地项目标识，自托管默认 local" },
+      provider: {
+        type: "string",
+        enum: ["insforge", "firebase"],
+        required: false,
+        description: "初始化后端提供商，默认 insforge；会写入 project.json 与 frontend/web/.env.development",
+      },
       url: { type: "string", required: false, description: "InsForge 网关，默认读 insforge/.env 的 API_BASE_URL" },
       name: { type: "string", required: false, description: "显示名，默认 GravityD" },
+    },
+  },
+  init: {
+    method: "init",
+    since: "0.1.0",
+    safety: "write-runtime",
+    description: "按选定 BaaS 提供商执行 scripts/init.sh（InsForge 拉栈，Firebase 只写环境模板）",
+    usage: "gravityd init [--provider=insforge|firebase] [--dry-run]",
+    params: {
+      provider: {
+        type: "string",
+        enum: ["insforge", "firebase"],
+        required: false,
+        description: "后端提供商，默认 insforge",
+      },
     },
   },
   unlink: {
@@ -137,6 +158,7 @@ export function helpText(name) {
       "命令:",
       "  schema [command]     自描述",
       "  link                 绑定当前仓库（写 .gravityd/project.json，不含密钥）",
+      "  init                 按 --provider 执行 scripts/init.sh",
       "  unlink               取消绑定",
       "  current              查看绑定",
       "  status | doctor      健康检查",

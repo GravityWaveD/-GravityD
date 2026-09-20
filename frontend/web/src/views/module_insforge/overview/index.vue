@@ -75,7 +75,7 @@
         </ElTableColumn>
         <ElTableColumn label="操作" width="120">
           <template #default="{ row }">
-            <ElButton v-if="row.route" link type="primary" @click.stop="goTable(row)">打开</ElButton>
+            <ElButton v-if="row.route" link type="primary" @click.stop="goTable(row as any)">打开</ElButton>
           </template>
         </ElTableColumn>
       </ElTable>

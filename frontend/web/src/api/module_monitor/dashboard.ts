@@ -1,5 +1,6 @@
-import { insforge, insforgeBaseUrl } from "@/utils/insforge";
-import { ok, unwrap } from "@/utils/insforge-api";
+import { baas, getBaaSProvider } from "@/utils/baas";
+import { insforgeBaseUrl } from "@/utils/insforge";
+import { ok, unwrap } from "@/utils/baas/api-helper";
 import type { HealthItem } from "@/mock/dashboard";
 
 export interface RecentLoginItem {
@@ -35,11 +36,11 @@ function dependencyItem(title: string, icon: string, okStatus: boolean): HealthI
 const DashboardAPI = {
   async getStats() {
     const [profiles, online, logs] = await Promise.all([
-      insforge.database.from("profiles").select("id,created_time"),
-      insforge.database.from("sys_online").select("session_id"),
-      insforge.database.from("sys_login_log").select("username,status,created_time,login_ip,login_location"),
+      baas.database.from("profiles").select("id,created_time"),
+      baas.database.from("sys_online").select("session_id"),
+      baas.database.from("sys_login_log").select("username,status,created_time,login_ip,login_location"),
     ]);
-    const users = (unwrap(profiles) as { id: string; created_time?: string }[]) || [];
+    const users = (unwrap(profiles) as { id: string | number; created_time?: string }[]) || [];
     const sessions = (unwrap(online) as { session_id: string }[]) || [];
     const loginRows =
       (unwrap(logs) as {
@@ -77,7 +78,16 @@ const DashboardAPI = {
 
   subscribeHealthStream(onItems: (items: HealthItem[]) => void): () => void {
     let timer: number | undefined;
+    const provider = getBaaSProvider();
+
     const ping = async () => {
+      if (provider === "firebase") {
+        onItems([
+          dependencyItem("Firestore 数据库", "ri:database-2-line", true),
+          dependencyItem("Firebase 后端", "ri:server-line", true),
+        ]);
+        return;
+      }
       try {
         const response = await fetch(`${insforgeBaseUrl}/api/health`);
         const healthy = response.ok;

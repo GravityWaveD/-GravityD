@@ -29,6 +29,15 @@ upsert_env() {
   fi
 }
 
+# 仅当键不存在时写入，避免覆盖用户已填的 Firebase 凭据。
+ensure_env_key() {
+  local file="$1" key="$2" value="$3"
+  if grep -qE "^${key}=" "$file"; then
+    return 0
+  fi
+  upsert_env "$file" "$key" "$value"
+}
+
 env_get() {
   local file="$1" key="$2"
   [[ -f "$file" ]] || return 1
@@ -117,38 +126,66 @@ apply_schema() {
 }
 
 write_web_env() {
+  local provider="${1:-insforge}"
   local dest="$WEB_DIR/.env.development"
   local example="$WEB_DIR/.env.development.example"
-  local anon
-  anon="$(env_get "$INSFORGE_DIR/.env" ACCESS_ANON_KEY || true)"
-  [[ -n "$anon" ]] || anon="$(env_get "$INSFORGE_DIR/.env" ANON_KEY || true)"
   if [[ ! -f "$dest" && -f "$example" ]]; then
     cp "$example" "$dest"
   fi
   [[ -f "$dest" ]] || touch "$dest"
   upsert_env "$dest" "VITE_APP_TITLE" "GravityD"
-  upsert_env "$dest" "VITE_INSFORGE_URL" "http://127.0.0.1:7130"
-  if [[ -n "$anon" ]]; then
-    upsert_env "$dest" "VITE_INSFORGE_ANON_KEY" "$anon"
+  upsert_env "$dest" "VITE_BACKEND_PROVIDER" "$provider"
+
+  if [[ "$provider" == "insforge" ]]; then
+    local anon
+    anon="$(env_get "$INSFORGE_DIR/.env" ACCESS_ANON_KEY || true)"
+    [[ -n "$anon" ]] || anon="$(env_get "$INSFORGE_DIR/.env" ANON_KEY || true)"
+    upsert_env "$dest" "VITE_INSFORGE_URL" "http://127.0.0.1:7130"
+    if [[ -n "$anon" ]]; then
+      upsert_env "$dest" "VITE_INSFORGE_ANON_KEY" "$anon"
+    else
+      warn "insforge/.env 里还没有 ACCESS_ANON_KEY，启动栈后重新执行 init 会写上"
+    fi
   else
-    warn "insforge/.env 里还没有 ACCESS_ANON_KEY，启动栈后重新执行 init 会写上"
+    log "配置 Firebase 后端环境变量模板..."
+    ensure_env_key "$dest" "VITE_FIREBASE_API_KEY" "${VITE_FIREBASE_API_KEY:-${FIREBASE_API_KEY:-}}"
+    ensure_env_key "$dest" "VITE_FIREBASE_AUTH_DOMAIN" "${VITE_FIREBASE_AUTH_DOMAIN:-${FIREBASE_AUTH_DOMAIN:-}}"
+    ensure_env_key "$dest" "VITE_FIREBASE_PROJECT_ID" "${VITE_FIREBASE_PROJECT_ID:-${FIREBASE_PROJECT_ID:-}}"
+    ensure_env_key "$dest" "VITE_FIREBASE_STORAGE_BUCKET" "${VITE_FIREBASE_STORAGE_BUCKET:-${FIREBASE_STORAGE_BUCKET:-}}"
+    ensure_env_key "$dest" "VITE_FIREBASE_MESSAGING_SENDER_ID" "${VITE_FIREBASE_MESSAGING_SENDER_ID:-${FIREBASE_MESSAGING_SENDER_ID:-}}"
+    ensure_env_key "$dest" "VITE_FIREBASE_APP_ID" "${VITE_FIREBASE_APP_ID:-${FIREBASE_APP_ID:-}}"
+    ensure_env_key "$dest" "VITE_FIREBASE_MEASUREMENT_ID" "${VITE_FIREBASE_MEASUREMENT_ID:-${FIREBASE_MEASUREMENT_ID:-}}"
   fi
-  log "已写入 $dest"
+  log "已写入 $dest (Provider: $provider)"
 }
 
 write_web_prod_env() {
+  local provider="${1:-insforge}"
   local dest="$WEB_DIR/.env.production"
   local example="$WEB_DIR/.env.production.example"
   local url="${GRAVITYD_PUBLIC_URL:-http://127.0.0.1:7130}"
-  local anon
-  anon="$(env_get "$INSFORGE_DIR/.env" ACCESS_ANON_KEY || true)"
-  [[ -n "$anon" ]] || anon="$(env_get "$INSFORGE_DIR/.env" ANON_KEY || true)"
   if [[ ! -f "$dest" && -f "$example" ]]; then
     cp "$example" "$dest"
   fi
   [[ -f "$dest" ]] || touch "$dest"
   upsert_env "$dest" "VITE_APP_TITLE" "GravityD"
-  upsert_env "$dest" "VITE_INSFORGE_URL" "$url"
-  upsert_env "$dest" "VITE_API_BASE_URL" "$url"
-  [[ -n "$anon" ]] && upsert_env "$dest" "VITE_INSFORGE_ANON_KEY" "$anon"
+  upsert_env "$dest" "VITE_BACKEND_PROVIDER" "$provider"
+
+  if [[ "$provider" == "insforge" ]]; then
+    local anon
+    anon="$(env_get "$INSFORGE_DIR/.env" ACCESS_ANON_KEY || true)"
+    [[ -n "$anon" ]] || anon="$(env_get "$INSFORGE_DIR/.env" ANON_KEY || true)"
+    upsert_env "$dest" "VITE_INSFORGE_URL" "$url"
+    upsert_env "$dest" "VITE_API_BASE_URL" "$url"
+    [[ -n "$anon" ]] && upsert_env "$dest" "VITE_INSFORGE_ANON_KEY" "$anon"
+  else
+    ensure_env_key "$dest" "VITE_FIREBASE_API_KEY" "${VITE_FIREBASE_API_KEY:-${FIREBASE_API_KEY:-}}"
+    ensure_env_key "$dest" "VITE_FIREBASE_AUTH_DOMAIN" "${VITE_FIREBASE_AUTH_DOMAIN:-${FIREBASE_AUTH_DOMAIN:-}}"
+    ensure_env_key "$dest" "VITE_FIREBASE_PROJECT_ID" "${VITE_FIREBASE_PROJECT_ID:-${FIREBASE_PROJECT_ID:-}}"
+    ensure_env_key "$dest" "VITE_FIREBASE_STORAGE_BUCKET" "${VITE_FIREBASE_STORAGE_BUCKET:-${FIREBASE_STORAGE_BUCKET:-}}"
+    ensure_env_key "$dest" "VITE_FIREBASE_MESSAGING_SENDER_ID" "${VITE_FIREBASE_MESSAGING_SENDER_ID:-${FIREBASE_MESSAGING_SENDER_ID:-}}"
+    ensure_env_key "$dest" "VITE_FIREBASE_APP_ID" "${VITE_FIREBASE_APP_ID:-${FIREBASE_APP_ID:-}}"
+    ensure_env_key "$dest" "VITE_FIREBASE_MEASUREMENT_ID" "${VITE_FIREBASE_MEASUREMENT_ID:-${FIREBASE_MEASUREMENT_ID:-}}"
+  fi
+  log "已写入 $dest (Provider: $provider)"
 }

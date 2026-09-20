@@ -1,5 +1,5 @@
-import { insforge } from "@/utils/insforge";
-import { buildTree, ok, unwrap } from "@/utils/insforge-api";
+import { baas } from "@/utils/baas";
+import { buildTree, ok, unwrap } from "@/utils/baas/api-helper";
 
 function sortMenus(rows: MenuTable[]) {
   return [...rows].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -7,7 +7,7 @@ function sortMenus(rows: MenuTable[]) {
 
 const MenuAPI = {
   async listMenu(query?: MenuPageQuery) {
-    let builder = insforge.database.from("sys_menu").select("*");
+    let builder = baas.database.from("sys_menu").select("*");
     if (query?.name) builder = builder.ilike("name", `%${query.name}%`);
     if (query?.status !== undefined && query.status !== null) builder = builder.eq("status", query.status);
     if (query?.type !== undefined && query.type !== null) builder = builder.eq("type", query.type);
@@ -17,28 +17,28 @@ const MenuAPI = {
   },
 
   async detailMenu(id: number) {
-    const rows = unwrap(await insforge.database.from("sys_menu").select("*").eq("id", id)) as MenuTable[];
+    const rows = unwrap(await baas.database.from("sys_menu").select("*").eq("id", id)) as MenuTable[];
     if (!rows?.[0]) throw new Error("菜单不存在");
     return ok(rows[0]);
   },
 
   async createMenu(body: MenuForm) {
-    unwrap(await insforge.database.from("sys_menu").insert([sanitizeMenu(body)]).select());
+    unwrap(await baas.database.from("sys_menu").insert([sanitizeMenu(body)]));
     return ok(null, "创建成功", true);
   },
 
   async updateMenu(id: number, body: MenuForm) {
-    unwrap(await insforge.database.from("sys_menu").update(sanitizeMenu(body)).eq("id", id));
+    unwrap(await baas.database.from("sys_menu").update(sanitizeMenu(body)).eq("id", id));
     return ok(null, "更新成功", true);
   },
 
   async deleteMenu(body: number[]) {
-    unwrap(await insforge.database.from("sys_menu").delete().in("id", body));
+    unwrap(await baas.database.from("sys_menu").delete().in("id", body));
     return ok(null, "删除成功", true);
   },
 
   async batchMenu(body: BatchType) {
-    unwrap(await insforge.database.from("sys_menu").update({ status: body.status }).in("id", body.ids));
+    unwrap(await baas.database.from("sys_menu").update({ status: body.status }).in("id", body.ids));
     return ok(null, "更新成功", true);
   },
 };

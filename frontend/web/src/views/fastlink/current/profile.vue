@@ -640,7 +640,7 @@ const handleUpload = async (options: UploadRequestOptions) => {
       ElMessage.error(errorMsg);
       options.onError({
         ...new Error(errorMsg),
-        status: response.status || 500,
+        status: (response as any).status || 500,
         method: "POST",
         url: "/system/user/current/avatar/upload",
       });

@@ -1,9 +1,9 @@
-import { insforge } from "@/utils/insforge";
-import { ok, serverPageOf, unwrap } from "@/utils/insforge-api";
+import { baas } from "@/utils/baas";
+import { ok, serverPageOf, unwrap } from "@/utils/baas/api-helper";
 
 const RoleAPI = {
   async listRole(query?: TablePageQuery) {
-    let builder = insforge.database.from("sys_role").select("*", { count: "exact" });
+    let builder = baas.database.from("sys_role").select("*", { count: "exact" });
     if (query?.name) builder = builder.ilike("name", `%${query.name}%`);
     if (query?.code) builder = builder.ilike("code", `%${query.code}%`);
     if (query?.status !== undefined && query.status !== null && query.status !== ("" as unknown as number)) {
@@ -18,40 +18,37 @@ const RoleAPI = {
   },
 
   async detailRole(id: number) {
-    const rows = unwrap(await insforge.database.from("sys_role").select("*").eq("id", id)) as RoleTable[];
+    const rows = unwrap(await baas.database.from("sys_role").select("*").eq("id", id)) as RoleTable[];
     if (!rows?.[0]) throw new Error("角色不存在");
     const links = unwrap(
-      await insforge.database.from("sys_role_menus").select("menu_id").eq("role_id", id)
+      await baas.database.from("sys_role_menus").select("menu_id").eq("role_id", id)
     ) as { menu_id: number }[];
-    const menuIds = links.map((item) => item.menu_id);
+    const menuIds = links.map((item) => Number(item.menu_id));
     const menus = menuIds.length
-      ? ((unwrap(await insforge.database.from("sys_menu").select("*").in("id", menuIds)) as permissionMenuType[]) || [])
+      ? ((unwrap(await baas.database.from("sys_menu").select("*").in("id", menuIds)) as permissionMenuType[]) || [])
       : [];
     return ok({ ...rows[0], menus });
   },
 
   async createRole(body: RoleForm) {
     unwrap(
-      await insforge.database
-        .from("sys_role")
-        .insert([
-          {
-            name: body.name,
-            code: body.code,
-            order: body.order ?? 999,
-            data_scope: body.data_scope ?? 1,
-            status: body.status ?? 0,
-            description: body.description,
-          },
-        ])
-        .select()
+      await baas.database.from("sys_role").insert([
+        {
+          name: body.name,
+          code: body.code,
+          order: body.order ?? 999,
+          data_scope: body.data_scope ?? 1,
+          status: body.status ?? 0,
+          description: body.description,
+        },
+      ])
     );
     return ok(null, "创建成功", true);
   },
 
   async updateRole(id: number, body: RoleForm) {
     unwrap(
-      await insforge.database
+      await baas.database
         .from("sys_role")
         .update({
           name: body.name,
@@ -67,39 +64,39 @@ const RoleAPI = {
   },
 
   async deleteRole(body: number[]) {
-    unwrap(await insforge.database.from("sys_role").delete().in("id", body));
+    unwrap(await baas.database.from("sys_role").delete().in("id", body));
     return ok(null, "删除成功", true);
   },
 
   async batchRole(body: BatchType) {
-    unwrap(await insforge.database.from("sys_role").update({ status: body.status }).in("id", body.ids));
+    unwrap(await baas.database.from("sys_role").update({ status: body.status }).in("id", body.ids));
     return ok(null, "更新成功", true);
   },
 
   async setPermission(body: permissionDataType) {
     for (const roleId of body.role_ids) {
-      await insforge.database.from("sys_role_menus").delete().eq("role_id", roleId);
+      await baas.database.from("sys_role_menus").delete().eq("role_id", roleId);
       if (body.menu_ids?.length) {
         unwrap(
-          await insforge.database
+          await baas.database
             .from("sys_role_menus")
             .insert(body.menu_ids.map((menuId) => ({ role_id: roleId, menu_id: menuId })))
         );
       }
       if (body.data_scope !== undefined) {
-        await insforge.database.from("sys_role").update({ data_scope: body.data_scope }).eq("id", roleId);
+        await baas.database.from("sys_role").update({ data_scope: body.data_scope }).eq("id", roleId);
       }
     }
     return ok(null, "权限已更新", true);
   },
 
-  async exportRole(_query: TablePageQuery) {
+  async exportRole(_query: TablePageQuery): Promise<{ data: Blob }> {
     throw new Error("第一期未迁移导出");
   },
 
   async getRoleOptions() {
-    const rows = (unwrap(await insforge.database.from("sys_role").select("id,name,code,status")) as RoleTable[]) || [];
-    return ok(rows.map((row) => ({ value: row.id!, label: row.name })));
+    const rows = (unwrap(await baas.database.from("sys_role").select("id,name,code,status")) as RoleTable[]) || [];
+    return ok(rows.map((row) => ({ value: Number(row.id!), label: row.name })));
   },
 };
 

@@ -4,6 +4,7 @@ import { createIo, EXIT, fail } from "../lib/io.mjs";
 import {
   cmdCurrent,
   cmdHelp,
+  cmdInit,
   cmdLink,
   cmdMigrateApply,
   cmdModuleAdd,
@@ -38,6 +39,9 @@ async function main() {
         break;
       case "link":
         code = cmdLink(io, flags, process.cwd());
+        break;
+      case "init":
+        code = cmdInit(io, flags, process.cwd());
         break;
       case "unlink":
         code = cmdUnlink(io, process.cwd());

@@ -16,8 +16,8 @@ import { store, useDictStore } from "@stores";
 import type { UserInfo } from "@/api/module_system/user";
 import { ResultEnum } from "@/enums/api/result.enum";
 import { resetRouteInitState, resetRouterState } from "@/router/refresh";
-import { isInsforgeAuthError } from "@/utils/insforge-api";
-import { syncInsforgeToken } from "@/utils/insforge";
+import { isBaaSAuthError } from "@/utils/baas/error";
+import { syncBaaSToken } from "@/utils/baas";
 
 /** {@link useUserStore} 的 `logout` 可选参数 */
 export interface LogoutOptions {
@@ -60,7 +60,7 @@ export const useUserStore = defineStore(
     // 记住我状态
     const rememberMe = ref(Auth.getRememberMe());
     /** info 扩展类型：兼容 API 返回 `user_id`（非标准 UserInfo 字段） */
-    type UserInfoLike = Partial<UserInfo> & { user_id?: number; [key: string]: unknown };
+    type UserInfoLike = Partial<UserInfo> & { user_id?: number | string; [key: string]: unknown };
 
     // 计算属性：基础用户信息
     const basicInfo = computed(() => info.value as UserInfoLike);
@@ -161,7 +161,7 @@ export const useUserStore = defineStore(
       try {
         await loadCurrentUser();
       } catch (error) {
-        if (isInsforgeAuthError(error) && Auth.getRefreshToken()) {
+        if (isBaaSAuthError(error) && Auth.getRefreshToken()) {
           try {
             await refreshTokenFn();
             await loadCurrentUser();
@@ -330,7 +330,7 @@ export const useUserStore = defineStore(
      */
     function resetAllState() {
       Auth.clearAuth();
-      syncInsforgeToken(null);
+      syncBaaSToken(null);
       info.value = {};
       routeList.value = [];
       hasGetRoute.value = false;
@@ -368,7 +368,7 @@ export const useUserStore = defineStore(
       // 更新令牌，保持当前记住我状态
       Auth.setTokens(data.access_token, data.refresh_token, Auth.getRememberMe());
       setToken(data.access_token, data.refresh_token);
-      syncInsforgeToken(data.access_token);
+      syncBaaSToken(data.access_token);
     }
 
     /**

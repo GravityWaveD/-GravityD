@@ -322,7 +322,7 @@ const handleSelectSession = async (session: ChatSession) => {
       return;
     }
 
-    const sessionData = response.data.data || {};
+    const sessionData = (response.data.data || {}) as ChatSession;
     const stored = sessionData.messages || [];
     if (stored.length) {
       stored.forEach((msg: { role: string; content: string }) => {
@@ -331,12 +331,12 @@ const handleSelectSession = async (session: ChatSession) => {
         }
       });
     } else {
-      const runs = sessionData.runs || [];
-      runs.forEach((run: { messages?: { role: string; content: string }[] }) => {
+      const runs = (sessionData.runs || []) as Array<{ messages?: { role: string; content: string }[] }>;
+      runs.forEach((run) => {
         const runMessages = run.messages || [];
         runMessages.forEach((msg: { role: string; content: string }) => {
           if (msg.role === "user" || msg.role === "assistant") {
-            addMessage(msg.role, msg.content);
+            addMessage(msg.role as "user" | "assistant", msg.content);
           }
         });
       });

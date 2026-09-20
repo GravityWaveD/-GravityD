@@ -107,8 +107,8 @@
                   <ElTag size="small" :type="msg.role === 'user' ? 'primary' : 'success'">
                     {{ msg.role === "user" ? "用户" : "助手" }}
                   </ElTag>
-                  <span v-if="msg.created_at" class="message-time">
-                    {{ formatMsgTime(msg.created_at) }}
+                  <span v-if="msg.created_time" class="message-time">
+                    {{ formatMsgTime(msg.created_time) }}
                   </span>
                 </div>
                 <div class="message-content">{{ msg.content }}</div>
@@ -380,9 +380,14 @@ const initialFormData = {
   title: "",
 };
 
-function formatMsgTime(timestamp: number | null): string {
+function formatMsgTime(timestamp: number | string | null | undefined): string {
   if (!timestamp) return "";
-  return formatToDateTime(new Date(timestamp * 1000));
+  if (typeof timestamp === "string") {
+    const parsed = Date.parse(timestamp);
+    if (!Number.isNaN(parsed)) return formatToDateTime(new Date(parsed));
+    return timestamp;
+  }
+  return formatToDateTime(new Date(timestamp > 1e11 ? timestamp : timestamp * 1000));
 }
 
 async function handleSearchBarSearch(params: MemorySearchForm) {

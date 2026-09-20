@@ -156,7 +156,7 @@ export class TransferStream {
     );
     this.client = createSSEClient({
       url: url.toString(),
-      onEvent: (event, data) => {
+      onEvent: (event: string, data: string) => {
         if (event !== "task_update") return;
         try {
           this.handlers.onMessage(JSON.parse(data));
@@ -164,7 +164,7 @@ export class TransferStream {
           /* ignore */
         }
       },
-      onStatus: (connected) => this.handlers.onStatus(connected),
+      onStatus: (connected: boolean) => this.handlers.onStatus(connected),
       // 令牌失效：释放实例，视图层下次 sync 时以新令牌重建
       onFatal: () => {
         this.client = null;

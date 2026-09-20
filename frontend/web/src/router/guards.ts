@@ -17,7 +17,7 @@ import { MenuProcessor } from "./MenuProcessor";
 import { NProgress } from "@utils/ui";
 import { Auth } from "@utils/auth";
 import { isHttpError, ApiStatus } from "@utils/http";
-import { isInsforgeAuthError } from "@/utils/insforge-api";
+import { isBaaSAuthError } from "@/utils/baas/error";
 import { refreshState } from "./refresh";
 import { getMainScrollEl } from "@/hooks/core/useCommon";
 
@@ -36,7 +36,7 @@ const ANONYMOUS_PUBLIC_REGEXPS = [
   /^\/login$/,
 ];
 function isAuthFailure(error: unknown): boolean {
-  if (isInsforgeAuthError(error)) return true;
+  if (isBaaSAuthError(error)) return true;
   return (
     isHttpError(error) &&
     (error.code === ApiStatus.unauthorized || error.code === ApiStatus.forbidden)

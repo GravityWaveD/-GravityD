@@ -1,19 +1,19 @@
-import { insforge } from "@/utils/insforge";
-import { ok, unwrap } from "@/utils/insforge-api";
+import { baas } from "@/utils/baas";
+import { ok, unwrap } from "@/utils/baas/api-helper";
 
 const ParamsAPI = {
-  async uploadFile(_body: unknown) {
+  async uploadFile(_body: unknown): Promise<{ data: ApiResponse<any> }> {
     throw new Error("第一期未迁移参数文件上传");
   },
 
   async getInitConfig() {
-    const rows = (unwrap(await insforge.database.from("sys_param").select("*").eq("status", 0)) as ConfigTable[]) || [];
+    const rows = (unwrap(await baas.database.from("sys_param").select("*").eq("status", 0)) as ConfigTable[]) || [];
     return ok(rows);
   },
 
-  async updateParams(id: number, body: ConfigForm) {
+  async updateParams(id: number | string, body: ConfigForm) {
     unwrap(
-      await insforge.database
+      await baas.database
         .from("sys_param")
         .update({
           config_name: body.config_name,

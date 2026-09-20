@@ -29,7 +29,7 @@ const StorageAPI = {
       data: formData,
       headers: { "Content-Type": "multipart/form-data" },
       onUploadProgress: onProgress
-        ? (e) => {
+        ? (e: any) => {
             if (e.total) onProgress(Math.min(99, Math.round((e.loaded / e.total) * 100)));
           }
         : undefined,

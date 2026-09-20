@@ -73,8 +73,10 @@ gravityd schema module.add
 以「CRM / 客户」为例。域 `crm`，资源 `customer`，页面名「客户」。
 
 ```bash
-# 1. 绑定仓库（每个 clone 做一次）
-gravityd link --project-id local -y
+# 1. 绑定仓库（每个 clone 做一次；可带后端选型）
+gravityd link --project-id local --provider=insforge -y
+# 或: gravityd init --provider=firebase --dry-run
+# 正式初始化: bash scripts/init.sh --provider=insforge|firebase
 
 # 2. 看环境是否可用
 gravityd status
@@ -110,6 +112,7 @@ cd frontend/web
 
 ```bash
 gravityd link --project-id local -y
+gravityd link --project-id local --provider=firebase -y
 gravityd link --project-id my-app --url http://127.0.0.1:7130 --name GravityD -y
 gravityd link --project-id local --dry-run
 ```
@@ -117,6 +120,7 @@ gravityd link --project-id local --dry-run
 | 参数 | 说明 |
 |---|---|
 | `--project-id` | 本地标识，字母数字、点、下划线、短横线，最长 64。省略时默认 `local` |
+| `--provider` | `insforge`（默认）或 `firebase`。写入 `.gravityd/project.json` 和 `frontend/web/.env.development` 的 `VITE_BACKEND_PROVIDER`，不写密钥 |
 | `--url` | InsForge 网关。省略则读 `insforge/.env` 的 `API_BASE_URL`，再退回 `http://127.0.0.1:7130` |
 | `--name` | 显示名，默认 `GravityD` |
 | `-y` | 覆盖已绑定的**另一个** project-id 时必加 |
@@ -130,6 +134,7 @@ gravityd link --project-id local --dry-run
   "name": "GravityD",
   "root": "/path/to/base_server",
   "insforge_url": "http://127.0.0.1:7130",
+  "provider": "insforge",
   "linked_at": "2026-09-15T05:59:02.162Z",
   "paths": {
     "insforge": "insforge",
@@ -140,6 +145,15 @@ gravityd link --project-id local --dry-run
 ```
 
 换绑定：`gravityd link --project-id other -y`。取消：`gravityd unlink -y`。
+
+### 5.1.1 `init` — 按提供商初始化仓库
+
+```bash
+gravityd init --provider=insforge
+gravityd init --provider=firebase --dry-run
+```
+
+实际调用 `bash scripts/init.sh --provider=...`。InsForge 会拉 Docker 并跑迁移；Firebase 只写环境模板，随后用 `node scripts/seed-firebase.mjs` 播种 Firestore。`--dry-run` 只预览，不改环境。
 
 ### 5.2 `current` — 查看绑定
 

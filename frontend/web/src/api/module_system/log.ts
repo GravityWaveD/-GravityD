@@ -1,9 +1,9 @@
-import { insforge } from "@/utils/insforge";
-import { ok, serverPageOf, unwrap } from "@/utils/insforge-api";
+import { baas } from "@/utils/baas";
+import { ok, serverPageOf, unwrap } from "@/utils/baas/api-helper";
 
 const OperationLogAPI = {
   async list(query?: OperationLogPageQuery) {
-    let builder = insforge.database.from("sys_operation_log").select("*", { count: "exact" });
+    let builder = baas.database.from("sys_operation_log").select("*", { count: "exact" });
     if (query?.username) builder = builder.ilike("username", `%${query.username}%`);
     if (query?.request_path) builder = builder.ilike("request_path", `%${query.request_path}%`);
     if (query?.request_method) builder = builder.eq("request_method", query.request_method);
@@ -20,17 +20,17 @@ const OperationLogAPI = {
   },
 
   async detail(id: number) {
-    const rows = unwrap(await insforge.database.from("sys_operation_log").select("*").eq("id", id)) as OperationLogTable[];
+    const rows = unwrap(await baas.database.from("sys_operation_log").select("*").eq("id", id)) as OperationLogTable[];
     if (!rows?.[0]) throw new Error("日志不存在");
     return ok(rows[0]);
   },
 
   async delete(body: number[]) {
-    unwrap(await insforge.database.from("sys_operation_log").delete().in("id", body));
+    unwrap(await baas.database.from("sys_operation_log").delete().in("id", body));
     return ok(null, "删除成功", true);
   },
 
-  async export(_query?: OperationLogPageQuery) {
+  async export(_query?: OperationLogPageQuery): Promise<{ data: Blob }> {
     throw new Error("未迁移导出");
   },
 };
@@ -62,7 +62,7 @@ export interface OperationLogTable {
 
 export const LoginLogAPI = {
   async list(query?: LoginLogPageQuery) {
-    let builder = insforge.database.from("sys_login_log").select("*", { count: "exact" });
+    let builder = baas.database.from("sys_login_log").select("*", { count: "exact" });
     if (query?.username) builder = builder.ilike("username", `%${query.username}%`);
     if (query?.status !== undefined && query.status !== null && query.status !== ("" as unknown as number)) {
       builder = builder.eq("status", query.status);
@@ -76,13 +76,13 @@ export const LoginLogAPI = {
   },
 
   async detail(id: number) {
-    const rows = unwrap(await insforge.database.from("sys_login_log").select("*").eq("id", id)) as LoginLogTable[];
+    const rows = unwrap(await baas.database.from("sys_login_log").select("*").eq("id", id)) as LoginLogTable[];
     if (!rows?.[0]) throw new Error("日志不存在");
     return ok(rows[0]);
   },
 
   async delete(body: number[]) {
-    unwrap(await insforge.database.from("sys_login_log").delete().in("id", body));
+    unwrap(await baas.database.from("sys_login_log").delete().in("id", body));
     return ok(null, "删除成功", true);
   },
 };

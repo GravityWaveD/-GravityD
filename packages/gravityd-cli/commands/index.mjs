@@ -1,7 +1,15 @@
 import { basename, isAbsolute, join } from "node:path";
 import { existsSync } from "node:fs";
 import { CLI_VERSION, DEFAULT_INSFORGE_URL, DEFAULT_PROJECT_ID, FORBIDDEN_MIGRATIONS } from "../lib/constants.mjs";
-import { insforgeUrlFromEnv, postgresPortFromEnv, secretsPresent, composeProjectFromEnv } from "../lib/env.mjs";
+import {
+  insforgeUrlFromEnv,
+  postgresPortFromEnv,
+  secretsPresent,
+  composeProjectFromEnv,
+  normalizeProvider,
+  writeWebProviderEnv,
+} from "../lib/env.mjs";
+import { spawnSync } from "node:child_process";
 import { fail, printHumanLines } from "../lib/io.mjs";
 import {
   findGravitydRoot,
@@ -58,13 +66,17 @@ export function cmdLink(io, flags, cwd) {
   }
 
   const url = (flags.url || insforgeUrlFromEnv(root, DEFAULT_INSFORGE_URL)).replace(/\/$/, "");
+  const provider = flags.provider
+    ? normalizeProvider(flags.provider)
+    : normalizeProvider(existing?.provider || "insforge");
   if (io.dryRun) {
-    const data = { root, project_id: projectId, insforge_url: url, dry_run: true };
+    const data = { root, project_id: projectId, insforge_url: url, provider, dry_run: true };
     return io.writeOk(
       data,
       printHumanLines([
         `[dry-run] 将写入 ${root}/.gravityd/project.json`,
         `project_id: ${projectId}`,
+        `provider: ${provider}`,
         `insforge_url: ${url}`,
       ])
     );
@@ -77,7 +89,10 @@ export function cmdLink(io, flags, cwd) {
     project_id: projectId,
     name: flags.name || "GravityD",
     insforge_url: url,
+    provider,
   });
+  const envFile = writeWebProviderEnv(root, provider);
+  project.env_file = envFile.replace(`${root}/`, "");
   writeIdempotency(root, flags.idempotencyKey, project);
   return io.writeOk(project, formatLink(project, false));
 }
@@ -86,9 +101,45 @@ function formatLink(project, replay) {
   return printHumanLines([
     replay ? "已存在相同 idempotency-key，返回上次 link 结果" : `已链接 GravityD 项目 ${project.project_id}`,
     `  根目录: ${project.root}`,
+    `  提供商: ${project.provider || "insforge"}`,
     `  InsForge: ${project.insforge_url}`,
     `  配置: .gravityd/project.json（已 gitignore，不含密钥）`,
   ]);
+}
+
+/**
+ * 按 --provider 调用 scripts/init.sh。dry-run 只预览，不拉 Docker。
+ * @param {{ json: boolean, dryRun: boolean, writeOk: Function }} io CLI IO
+ * @param {{ provider?: string }} flags 命令行参数
+ * @param {string} cwd 当前工作目录
+ */
+export function cmdInit(io, flags, cwd) {
+  const root = findGravitydRoot(cwd);
+  const provider = normalizeProvider(flags.provider, "insforge");
+  const script = join(root, "scripts", "init.sh");
+  if (!existsSync(script)) {
+    throw fail("runtime_error", "找不到 scripts/init.sh");
+  }
+  if (io.dryRun) {
+    return io.writeOk(
+      { root, provider, dry_run: true, script: "scripts/init.sh" },
+      `[dry-run] bash scripts/init.sh --provider=${provider}`
+    );
+  }
+  const result = spawnSync("bash", [script, `--provider=${provider}`], {
+    cwd: root,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  if (result.status !== 0) {
+    throw fail("runtime_error", (result.stderr || result.stdout || "init.sh 失败").trim(), {
+      hint: `bash scripts/init.sh --provider=${provider}`,
+    });
+  }
+  return io.writeOk(
+    { root, provider, stdout: result.stdout },
+    result.stdout || `已按 ${provider} 完成初始化`
+  );
 }
 
 export function cmdUnlink(io, cwd) {
@@ -109,6 +160,7 @@ export function cmdCurrent(io, cwd) {
   return io.writeOk(project, printHumanLines([
     `project_id: ${project.project_id}`,
     `root: ${project.root}`,
+    `provider: ${project.provider || "insforge"}`,
     `insforge_url: ${project.insforge_url}`,
     `linked_at: ${project.linked_at}`,
   ]));
@@ -126,6 +178,7 @@ export async function cmdStatus(io, cwd) {
     root,
     linked: Boolean(project?.project_id),
     project_id: project?.project_id || null,
+    provider: project?.provider || "insforge",
     insforge_url: url,
     insforge_http: http,
     postgres: { host: "127.0.0.1", port: pgPort, ...tcp },
@@ -140,6 +193,7 @@ export async function cmdStatus(io, cwd) {
     printHumanLines([
       `root: ${root}`,
       `linked: ${data.linked ? data.project_id : "no"}`,
+      `provider: ${data.provider}`,
       `insforge: ${url}  ${http.ok ? `HTTP ${http.status}` : http.error || "down"}`,
       `postgres: 127.0.0.1:${pgPort}  ${tcp.ok ? "up" : tcp.error || "down"}`,
       `anon_key: ${secrets.anon_key ? "present" : "missing"}`,

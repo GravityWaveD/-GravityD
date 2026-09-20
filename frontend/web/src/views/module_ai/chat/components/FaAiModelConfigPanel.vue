@@ -141,7 +141,7 @@
                   </div>
                   <div class="detail-row">
                     <span class="detail-label">Temperature</span>
-                    <span class="detail-value">{{ item.temperature.toFixed(1) }}</span>
+                    <span class="detail-value">{{ (item.temperature ?? 0.7).toFixed(1) }}</span>
                   </div>
                   <div v-if="item.created_time" class="detail-row">
                     <span class="detail-label">添加于</span>

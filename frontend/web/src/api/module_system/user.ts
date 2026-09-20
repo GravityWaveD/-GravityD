@@ -1,15 +1,19 @@
 import { type MenuTable, type MenuForm } from "@/api/module_system/menu";
-import { insforge, insforgeRequest, toLoginEmail, syncInsforgeToken } from "@/utils/insforge";
+import { baas, toLoginEmail, syncBaaSToken } from "@/utils/baas";
 import { Auth } from "@/utils/auth";
 import { ApiStatus, HttpError } from "@/utils/http";
-import { buildTree, ok, serverPageOf, unwrap } from "@/utils/insforge-api";
+import { buildTree, ok, serverPageOf, unwrap } from "@/utils/baas/api-helper";
 import { touchOnline } from "@/utils/insforge-presence";
 
-type ProfileRow = UserInfo & { id: string };
+type ProfileRow = UserInfo & { id: string | number };
 
-function jwtSub(token: string): string | null {
+function jwtSub(tokenParam?: string | null): string | null {
   try {
-    const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    const token = tokenParam ?? Auth.getAccessToken();
+    if (!token) return null;
+    const parts = token.split(".");
+    if (parts.length < 2 || !parts[1]) return null;
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
     if (typeof payload.exp === "number" && payload.exp * 1000 < Date.now()) return null;
     return payload.sub || payload.user_id || null;
   } catch {
@@ -18,24 +22,24 @@ function jwtSub(token: string): string | null {
 }
 
 async function currentUserId(): Promise<string> {
-  syncInsforgeToken();
-  const { data } = await insforge.auth.getCurrentUser();
-  if (data?.user?.id) return data.user.id;
+  syncBaaSToken();
+  const user = await baas.auth.getCurrentUser();
+  if (user?.id) return String(user.id);
   const sub = jwtSub(Auth.getAccessToken());
-  if (sub) return sub;
+  if (sub) return String(sub);
   throw new HttpError("未登录或会话已失效", ApiStatus.unauthorized);
 }
 
-async function loadMenusForUser(profile: ProfileRow, roleIds: number[]): Promise<MenuTable[]> {
-  let query = insforge.database.from("sys_menu").select("*").eq("status", 0);
+async function loadMenusForUser(profile: ProfileRow, roleIds: (number | string)[]): Promise<MenuTable[]> {
+  let query = baas.database.from("sys_menu").select("*").eq("status", 0);
   if (!profile.is_superuser) {
     if (!roleIds.length) return [];
     const links = unwrap(
-      await insforge.database.from("sys_role_menus").select("menu_id").in("role_id", roleIds)
-    ) as { menu_id: number }[];
+      await baas.database.from("sys_role_menus").select("menu_id").in("role_id", roleIds)
+    ) as { menu_id: number | string }[];
     const ids = [...new Set(links.map((item) => item.menu_id))];
     if (!ids.length) return [];
-    query = insforge.database.from("sys_menu").select("*").eq("status", 0).in("id", ids);
+    query = baas.database.from("sys_menu").select("*").eq("status", 0).in("id", ids);
   }
   const rows = (unwrap(await query) as MenuTable[]) || [];
   rows.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -44,16 +48,16 @@ async function loadMenusForUser(profile: ProfileRow, roleIds: number[]): Promise
 
 async function hydrateUser(profile: ProfileRow): Promise<UserInfo> {
   const roleLinks = unwrap(
-    await insforge.database.from("sys_user_roles").select("role_id").eq("user_id", profile.id)
-  ) as { role_id: number }[];
+    await baas.database.from("sys_user_roles").select("role_id").eq("user_id", profile.id)
+  ) as { role_id: number | string }[];
   const roleIds = roleLinks.map((item) => item.role_id);
   const roles = roleIds.length
-    ? ((unwrap(await insforge.database.from("sys_role").select("*").in("id", roleIds)) as roleSelectorType[]) || [])
+    ? ((unwrap(await baas.database.from("sys_role").select("*").in("id", roleIds)) as roleSelectorType[]) || [])
     : [];
   let dept: deptTreeType | undefined;
   if (profile.dept_id) {
     const rows = unwrap(
-      await insforge.database.from("sys_dept").select("id,name,parent_id").eq("id", profile.dept_id)
+      await baas.database.from("sys_dept").select("id,name,parent_id").eq("id", profile.dept_id)
     ) as deptTreeType[];
     dept = rows?.[0];
   }
@@ -61,11 +65,11 @@ async function hydrateUser(profile: ProfileRow): Promise<UserInfo> {
   let positions: positionSelectorType[] = [];
   try {
     const posLinks = unwrap(
-      await insforge.database.from("sys_user_positions").select("position_id").eq("user_id", profile.id)
-    ) as { position_id: number }[];
+      await baas.database.from("sys_user_positions").select("position_id").eq("user_id", profile.id)
+    ) as { position_id: number | string }[];
     const positionIds = posLinks.map((item) => item.position_id);
     positions = positionIds.length
-      ? ((unwrap(await insforge.database.from("sys_position").select("*").in("id", positionIds)) as positionSelectorType[]) ||
+      ? ((unwrap(await baas.database.from("sys_position").select("*").in("id", positionIds)) as positionSelectorType[]) ||
         [])
       : [];
   } catch (error) {
@@ -77,10 +81,10 @@ async function hydrateUser(profile: ProfileRow): Promise<UserInfo> {
     dept,
     dept_name: dept?.name,
     roles: roles.map((role) => ({ ...role, menus: menus as MenuForm[] })),
-    role_ids: roles.map((role) => role.id!),
+    role_ids: roles.map((role) => role.id as number),
     role_names: roles.map((role) => role.name!),
     positions,
-    position_ids: positions.map((item) => item.id!),
+    position_ids: positions.map((item) => item.id as number),
     position_names: positions.map((item) => item.name!),
     menus,
   };
@@ -92,7 +96,7 @@ function asRows<T>(data: T | T[] | null | undefined): T[] {
 }
 
 async function fetchProfile(id: string | number): Promise<ProfileRow> {
-  const rows = asRows(unwrap(await insforge.database.from("profiles").select("*").eq("id", id)) as ProfileRow | ProfileRow[]);
+  const rows = asRows(unwrap(await baas.database.from("profiles").select("*").eq("id", id)) as ProfileRow | ProfileRow[]);
   if (!rows[0]) throw new Error("用户不存在");
   return rows[0];
 }
@@ -101,7 +105,7 @@ export const UserAPI = {
   async getCurrentUserInfo(_checkDataScope?: boolean) {
     const id = await currentUserId();
     const profile = await fetchProfile(id);
-    await insforge.database
+    await baas.database
       .from("profiles")
       .update({ last_login: new Date().toISOString() })
       .eq("id", id);
@@ -109,14 +113,14 @@ export const UserAPI = {
     return ok(await hydrateUser(profile));
   },
 
-  async uploadCurrentUserAvatar(_body: FormData) {
+  async uploadCurrentUserAvatar(_body: FormData): Promise<{ data: ApiResponse<{ file_url: string }> }> {
     throw new Error("第一期未迁移头像上传");
   },
 
   async updateCurrentUserInfo(body: InfoFormState) {
     const id = await currentUserId();
     unwrap(
-      await insforge.database
+      await baas.database
         .from("profiles")
         .update({
           name: body.name,
@@ -127,46 +131,47 @@ export const UserAPI = {
           description: body.description,
         })
         .eq("id", id)
-        .select()
     );
     return ok(await hydrateUser(await fetchProfile(id)), "更新成功", true);
   },
 
-  async changeCurrentUserPassword(_body: PasswordFormState) {
-    throw new Error("请在 InsForge 控制台或登录页重置密码");
+  async changeCurrentUserPassword(_body: PasswordFormState): Promise<{ data: ApiResponse<any> }> {
+    throw new Error("请在 BaaS 控制台或登录页重置密码");
   },
 
-  async resetUserPassword(_id: number, _body: ResetPasswordForm) {
-    throw new Error("第一期请在 InsForge 控制台重置密码");
+  async resetUserPassword(_id: number | string, _body: ResetPasswordForm): Promise<{ data: ApiResponse<any> }> {
+    throw new Error("第一期请在 BaaS 控制台重置密码");
   },
 
-  async forgetPassword(_body: ForgetPasswordForm) {
+  async forgetPassword(_body: ForgetPasswordForm): Promise<{ data: ApiResponse<any> }> {
     throw new Error("第一期未开通找回密码邮件");
   },
 
   async register(body: RegisterForm) {
     const email = toLoginEmail(body.username);
-    const created = await insforgeRequest<{ user?: { id: string }; accessToken?: string | null }>(
-      "/api/auth/users?client_type=server",
-      {
-        method: "POST",
-        json: { email, password: body.password, name: body.name || body.username },
-      }
-    );
-    const id = created.user?.id;
-    if (!id) throw new Error("注册失败");
-    const depts = unwrap(await insforge.database.from("sys_dept").select("id").eq("code", "DEFAULT")) as {
-      id: number;
+    let id: string;
+    if (baas.auth.createUser) {
+      const created = await baas.auth.createUser({
+        email,
+        password: body.password,
+        name: body.name || body.username,
+      });
+      id = created.id;
+    } else {
+      id = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    }
+    const depts = unwrap(await baas.database.from("sys_dept").select("id").eq("code", "DEFAULT")) as {
+      id: number | string;
     }[];
     unwrap(
-      await insforge.database.from("profiles").insert([
+      await baas.database.from("profiles").insert([
         {
           id,
           username: body.username,
           name: body.name || body.username,
           email,
           status: 0,
-          dept_id: depts?.[0]?.id ?? null,
+          dept_id: depts?.[0]?.id ? Number(depts[0].id) : null,
           is_superuser: false,
         },
       ])
@@ -175,7 +180,7 @@ export const UserAPI = {
   },
 
   async listUser(query: UserPageQuery) {
-    let builder = insforge.database.from("profiles").select("*", { count: "exact" });
+    let builder = baas.database.from("profiles").select("*", { count: "exact" });
     if (query.username) builder = builder.ilike("username", `%${query.username}%`);
     if (query.name) builder = builder.ilike("name", `%${query.name}%`);
     if (query.email) builder = builder.ilike("email", `%${query.email}%`);
@@ -193,24 +198,25 @@ export const UserAPI = {
     });
   },
 
-  async detailUser(id: number) {
+  async detailUser(id: number | string) {
     return ok(await hydrateUser(await fetchProfile(id)));
   },
 
   async createUser(body: UserForm) {
     const email = body.email || toLoginEmail(body.username || "user");
-    const created = await insforgeRequest<{ user?: { id: string } }>("/api/auth/users?client_type=server", {
-      method: "POST",
-      json: {
+    let id: string;
+    if (baas.auth.createUser) {
+      const created = await baas.auth.createUser({
         email,
         password: body.password || "123456",
         name: body.name || body.username,
-      },
-    });
-    const id = created.user?.id;
-    if (!id) throw new Error("创建登录账号失败");
+      });
+      id = created.id;
+    } else {
+      id = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    }
     unwrap(
-      await insforge.database.from("profiles").insert([
+      await baas.database.from("profiles").insert([
         {
           id,
           username: body.username,
@@ -219,7 +225,7 @@ export const UserAPI = {
           mobile: body.mobile,
           gender: body.gender ?? "2",
           status: body.status ?? 0,
-          dept_id: body.dept_id ?? null,
+          dept_id: body.dept_id ? Number(body.dept_id) : null,
           is_superuser: !!body.is_superuser,
           description: body.description,
           avatar: body.avatar,
@@ -228,14 +234,14 @@ export const UserAPI = {
     );
     if (body.role_ids?.length) {
       unwrap(
-        await insforge.database
+        await baas.database
           .from("sys_user_roles")
           .insert(body.role_ids.map((roleId) => ({ user_id: id, role_id: roleId })))
       );
     }
     if (body.position_ids?.length) {
       unwrap(
-        await insforge.database
+        await baas.database
           .from("sys_user_positions")
           .insert(body.position_ids.map((positionId) => ({ user_id: id, position_id: positionId })))
       );
@@ -243,9 +249,9 @@ export const UserAPI = {
     return ok(null, "创建成功", true);
   },
 
-  async updateUser(id: number, body: UserForm) {
+  async updateUser(id: number | string, body: UserForm) {
     unwrap(
-      await insforge.database
+      await baas.database
         .from("profiles")
         .update({
           username: body.username,
@@ -254,7 +260,7 @@ export const UserAPI = {
           mobile: body.mobile,
           gender: body.gender,
           status: body.status,
-          dept_id: body.dept_id ?? null,
+          dept_id: body.dept_id ? Number(body.dept_id) : null,
           is_superuser: body.is_superuser,
           description: body.description,
           avatar: body.avatar,
@@ -262,20 +268,20 @@ export const UserAPI = {
         .eq("id", id)
     );
     if (body.role_ids) {
-      await insforge.database.from("sys_user_roles").delete().eq("user_id", id);
+      await baas.database.from("sys_user_roles").delete().eq("user_id", id);
       if (body.role_ids.length) {
         unwrap(
-          await insforge.database
+          await baas.database
             .from("sys_user_roles")
             .insert(body.role_ids.map((roleId) => ({ user_id: id, role_id: roleId })))
         );
       }
     }
     if (body.position_ids) {
-      await insforge.database.from("sys_user_positions").delete().eq("user_id", id);
+      await baas.database.from("sys_user_positions").delete().eq("user_id", id);
       if (body.position_ids.length) {
         unwrap(
-          await insforge.database
+          await baas.database
             .from("sys_user_positions")
             .insert(body.position_ids.map((positionId) => ({ user_id: id, position_id: positionId })))
         );
@@ -285,24 +291,24 @@ export const UserAPI = {
   },
 
   async deleteUser(body: Array<number | string>) {
-    unwrap(await insforge.database.from("profiles").delete().in("id", body));
+    unwrap(await baas.database.from("profiles").delete().in("id", body));
     return ok(null, "删除成功", true);
   },
 
   async batchUser(body: BatchType) {
-    unwrap(await insforge.database.from("profiles").update({ status: body.status }).in("id", body.ids));
+    unwrap(await baas.database.from("profiles").update({ status: body.status }).in("id", body.ids));
     return ok(null, "更新成功", true);
   },
 
-  async exportUser(_query: UserPageQuery) {
+  async exportUser(_query: UserPageQuery): Promise<{ data: Blob }> {
     throw new Error("第一期未迁移导出");
   },
 
-  async downloadTemplateUser() {
+  async downloadTemplateUser(): Promise<{ data: Blob }> {
     throw new Error("第一期未迁移导入模板");
   },
 
-  async importUser(_body: FormData) {
+  async importUser(_body: FormData): Promise<{ data: ApiResponse<any> }> {
     throw new Error("第一期未迁移导入");
   },
 };

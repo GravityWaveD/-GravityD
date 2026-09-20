@@ -32,17 +32,17 @@
             />
           </div>
           <div class="history-groups">
-            <div v-for="group in groupedSessions" :key="group.title" class="history-group">
-              <div class="group-title" @click="toggleGroup(group.title)">
+            <div v-for="group in groupedSessions" :key="group.title || ''" class="history-group">
+              <div class="group-title" @click="toggleGroup(group.title || '')">
                 <span>{{ group.title }}</span>
                 <ElIcon
                   class="collapse-icon"
-                  :class="{ collapsed: collapsedGroups.has(group.title) }"
+                  :class="{ collapsed: collapsedGroups.has(group.title || '') }"
                 >
                   <ArrowDown />
                 </ElIcon>
               </div>
-              <div v-show="!collapsedGroups.has(group.title)" class="session-list">
+              <div v-show="!collapsedGroups.has(group.title || '')" class="session-list">
                 <div
                   v-for="session in group.sessions"
                   :key="session.id"

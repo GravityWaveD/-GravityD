@@ -7,7 +7,8 @@ GravityD 二次开发 CLI。完整说明：[docs/gravityd-cli.md](../../docs/gra
 ## 快速开始
 
 ```bash
-npx --yes ./packages/gravityd-cli link --project-id local -y
+npx --yes ./packages/gravityd-cli link --project-id local --provider=insforge -y
+npx --yes ./packages/gravityd-cli init --provider=firebase --dry-run
 npx --yes ./packages/gravityd-cli status
 npx --yes ./packages/gravityd-cli module add --domain crm --resource customer --title 客户 --dry-run
 ```

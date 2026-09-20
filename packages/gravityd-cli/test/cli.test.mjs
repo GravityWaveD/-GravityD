@@ -9,6 +9,7 @@ import { parseArgv } from "../lib/args.mjs";
 import { collectMenuIdsFromSql, nextMenuBlock } from "../lib/menu.mjs";
 import { ident, moduleNames } from "../lib/names.mjs";
 import { looksLikeGravityd } from "../lib/project.mjs";
+import { normalizeProvider, writeWebProviderEnv } from "../lib/env.mjs";
 
 const bin = fileURLToPath(new URL("../bin/gravityd.mjs", import.meta.url));
 
@@ -51,13 +52,21 @@ test("parseArgv maps insforge-style flags", () => {
     "link",
     "--project-id",
     "local",
+    "--provider=firebase",
     "-y",
     "--dry-run",
   ]);
   assert.equal(positionals[0], "link");
   assert.equal(flags.projectId, "local");
+  assert.equal(flags.provider, "firebase");
   assert.equal(flags.yes, true);
   assert.equal(flags.dryRun, true);
+});
+
+test("normalizeProvider accepts insforge and firebase", () => {
+  assert.equal(normalizeProvider(undefined), "insforge");
+  assert.equal(normalizeProvider("Firebase"), "firebase");
+  assert.throws(() => normalizeProvider("supabase"));
 });
 
 test("ident rejects uppercase domain", () => {
@@ -116,6 +125,8 @@ test("link + current + module add dry-run + write", () => {
   const saved = JSON.parse(readFileSync(join(root, ".gravityd", "project.json"), "utf8"));
   assert.equal(saved.api_key, undefined);
   assert.equal(saved.appkey, undefined);
+  assert.equal(saved.provider, "insforge");
+  assert.match(readFileSync(join(root, "frontend", "web", ".env.development"), "utf8"), /VITE_BACKEND_PROVIDER=insforge/);
 
   const cur = parseOut(run(["current"], { cwd: root }));
   assert.equal(cur.data.project_id, "demo-app");
@@ -183,6 +194,39 @@ test("link + current + module add dry-run + write", () => {
   const forbidden = parseOut(run(["migrate", "apply", "--file", "002_seed_system.sql"], { cwd: root }));
   assert.equal(forbidden.ok, false);
   assert.equal(forbidden.error.code, "forbidden_migration");
+});
+
+test("link --provider=firebase writes env template without secrets", () => {
+  const root = fixture();
+  const linked = run(["link", "--project-id", "fb-app", "--provider", "firebase", "-y"], { cwd: root });
+  const body = parseOut(linked);
+  assert.equal(linked.status, 0, linked.stderr);
+  assert.equal(body.data.provider, "firebase");
+  const envText = readFileSync(join(root, "frontend", "web", ".env.development"), "utf8");
+  assert.match(envText, /VITE_BACKEND_PROVIDER=firebase/);
+  assert.match(envText, /VITE_FIREBASE_API_KEY=/);
+  assert.doesNotMatch(envText, /api_key=.+secret/);
+});
+
+test("init --dry-run previews provider without writing docker state", () => {
+  const root = fixture();
+  run(["link", "--project-id", "local", "-y"], { cwd: root });
+  writeFileSync(join(root, "scripts", "init.sh"), "#!/usr/bin/env bash\necho should-not-run\n");
+  const result = run(["init", "--provider=firebase", "--dry-run"], { cwd: root });
+  const body = parseOut(result);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(body.data.provider, "firebase");
+  assert.equal(body.data.dry_run, true);
+});
+
+test("writeWebProviderEnv only fills missing firebase keys", () => {
+  const root = fixture();
+  const dest = writeWebProviderEnv(root, "firebase");
+  writeFileSync(dest, "VITE_FIREBASE_API_KEY=keep-me\n");
+  writeWebProviderEnv(root, "firebase");
+  const text = readFileSync(dest, "utf8");
+  assert.match(text, /VITE_FIREBASE_API_KEY=keep-me/);
+  assert.match(text, /VITE_BACKEND_PROVIDER=firebase/);
 });
 
 test("module add without link is exit 2", () => {

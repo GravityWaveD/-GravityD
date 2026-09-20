@@ -1,9 +1,9 @@
-import { insforge } from "@/utils/insforge";
-import { ok, serverPageOf, unwrap } from "@/utils/insforge-api";
+import { baas } from "@/utils/baas";
+import { ok, serverPageOf, unwrap } from "@/utils/baas/api-helper";
 
 const VersionAPI = {
   async getVersionList(query: VersionPageQuery) {
-    let builder = insforge.database.from("sys_version").select("*", { count: "exact" });
+    let builder = baas.database.from("sys_version").select("*", { count: "exact" });
     if (query.status !== undefined && query.status !== null && query.status !== ("" as unknown as number)) {
       builder = builder.eq("status", query.status);
     }
@@ -17,19 +17,19 @@ const VersionAPI = {
 
   async getPublishedVersions() {
     const rows =
-      (unwrap(await insforge.database.from("sys_version").select("*").eq("status", 1)) as VersionTable[]) || [];
+      (unwrap(await baas.database.from("sys_version").select("*").eq("status", 1)) as VersionTable[]) || [];
     return ok(rows.sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0)));
   },
 
   async getVersionDetail(id: number) {
-    const rows = unwrap(await insforge.database.from("sys_version").select("*").eq("id", id)) as VersionTable[];
+    const rows = unwrap(await baas.database.from("sys_version").select("*").eq("id", id)) as VersionTable[];
     if (!rows?.[0]) throw new Error("版本不存在");
     return ok(rows[0]);
   },
 
   async createVersion(body: VersionForm) {
     unwrap(
-      await insforge.database.from("sys_version").insert([
+      await baas.database.from("sys_version").insert([
         {
           version: body.version,
           title: body.title,
@@ -47,7 +47,7 @@ const VersionAPI = {
 
   async updateVersion(id: number, body: VersionForm) {
     unwrap(
-      await insforge.database
+      await baas.database
         .from("sys_version")
         .update({
           version: body.version,
@@ -65,13 +65,13 @@ const VersionAPI = {
   },
 
   async deleteVersion(body: number[]) {
-    unwrap(await insforge.database.from("sys_version").delete().in("id", body));
+    unwrap(await baas.database.from("sys_version").delete().in("id", body));
     return ok(null, "删除成功", true);
   },
 
   async setVersionStatus(id: number, body: { status: number }) {
     const rows = unwrap(
-      await insforge.database.from("sys_version").update({ status: body.status }).eq("id", id).select()
+      await baas.database.from("sys_version").update({ status: body.status }).eq("id", id)
     ) as VersionTable[];
     return ok(rows?.[0] || null, "更新成功", true);
   },

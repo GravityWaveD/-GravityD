@@ -26,7 +26,7 @@ import zhCn from "element-plus/es/locale/lang/zh-cn";
 import { router } from "@/router";
 import { ElNotification } from "element-plus";
 import { initIconifyAsync } from "./plugins/iconify";
-import { isInsforgeAuthError } from "@/utils/insforge-api";
+import { isBaaSAuthError } from "@/utils/baas/error";
 import { redirectToLogin } from "@/utils/auth";
 
 const appStore = useAppStore();
@@ -140,8 +140,8 @@ onUnmounted(() => {
 
 // ─── 全局错误边界 ───
 onErrorCaptured((err, _instance, info) => {
-  // 过期 JWT：InsForge 在组件 beforeMount 里会抛 Invalid token，不是 UI 渲染坏了
-  if (isInsforgeAuthError(err)) {
+  // 过期 JWT：BaaS 在组件 beforeMount 里会抛 Invalid token，不是 UI 渲染坏了
+  if (isBaaSAuthError(err)) {
     console.warn(`[ErrorBoundary] ${info}:`, err);
     void redirectToLogin("登录已失效，请重新登录");
     return false;

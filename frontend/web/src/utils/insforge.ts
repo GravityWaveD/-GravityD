@@ -1,13 +1,11 @@
 import { createClient } from "@insforge/sdk";
 import { Auth } from "@/utils/auth";
+import { syncBaaSToken, toLoginEmail } from "./baas";
+
+export { toLoginEmail };
 
 const baseUrl = String(import.meta.env.VITE_INSFORGE_URL || "http://127.0.0.1:7130").replace(/\/$/, "");
 const anonKey = String(import.meta.env.VITE_INSFORGE_ANON_KEY || "");
-
-export function toLoginEmail(username: string): string {
-  const value = username.trim();
-  return value.includes("@") ? value.toLowerCase() : `${value}@local.dev`;
-}
 
 export const insforge = createClient({
   baseUrl,
@@ -18,6 +16,7 @@ export const insforge = createClient({
 export function syncInsforgeToken(token?: string | null) {
   const value = token === undefined ? Auth.getAccessToken() : token;
   insforge.setAccessToken(value || null);
+  syncBaaSToken(value || null);
 }
 
 syncInsforgeToken();

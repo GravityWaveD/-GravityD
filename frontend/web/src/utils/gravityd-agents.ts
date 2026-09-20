@@ -1,5 +1,5 @@
-import { insforge } from "@/utils/insforge";
-import { unwrap } from "@/utils/insforge-api";
+import { baas } from "@/utils/baas";
+import { unwrap } from "@/utils/baas/api-helper";
 
 export type AgentName = "router" | "guidance" | "data" | "workflow";
 
@@ -16,18 +16,18 @@ function routeIntent(message: string): Exclude<AgentName, "router"> {
 }
 
 async function countTable(table: string): Promise<number> {
-  const res = await insforge.database.from(table).select("id", { count: "exact", head: true });
+  const res = await baas.database.from(table).select("id", { count: "exact", head: true }).range(0, 0);
   if (res?.error) return 0;
-  return typeof res.count === "number" ? res.count : 0;
+  return typeof res.count === "number" ? res.count : (res.data?.length ?? 0);
 }
 
 async function runGuidance(message: string): Promise<string> {
   return [
-    "【引导 Agent】GravityD 当前运行在自托管 InsForge 上，不再使用 FastAPI 8001。",
+    "【引导 Agent】GravityD 支持自托管 InsForge 与 Google Firebase 双 BaaS 后端架构。",
     "",
     "常用入口：",
     "- 管理后台 http://127.0.0.1:5180/web",
-    "- InsForge 控制台 http://127.0.0.1:7130",
+    "- 后端控制台（根据当前生效 BaaS）",
     "- 加模块：npx --yes ./packages/gravityd-cli module add --domain <域> --resource <资源> --title <中文>",
     "- 迁移：npx --yes ./packages/gravityd-cli migrate apply --file 0xx_....sql（禁止 002）",
     "",
@@ -45,7 +45,7 @@ async function runData(message: string): Promise<string> {
     countTable("sys_role"),
   ]);
   return [
-    "【数据 Agent】只读统计（PostgREST count=exact，head:true）：",
+    "【数据 Agent】只读统计（BaaS 数据集合统计）：",
     `- 用户 ${users} 人`,
     `- 公告 ${notices} 条`,
     `- 工单 ${tickets} 条`,
@@ -59,7 +59,7 @@ async function runData(message: string): Promise<string> {
 async function runWorkflow(message: string): Promise<string> {
   const title = message.replace(/^.*?(工单|建议|报修|投诉)[:：]?\s*/, "").slice(0, 80) || message.slice(0, 80);
   const inserted = unwrap(
-    await insforge.database
+    await baas.database
       .from("sys_ticket")
       .insert([
         {
@@ -69,8 +69,7 @@ async function runWorkflow(message: string): Promise<string> {
           status: 0,
         },
       ])
-      .select()
-  ) as { id?: number }[] | { id?: number } | null;
+  ) as { id?: number | string }[] | { id?: number | string } | null;
   const row = Array.isArray(inserted) ? inserted[0] : inserted;
   return `【流程 Agent】已创建建议工单 #${row?.id ?? "?"}：${title}\n可到「工单」页继续处理。`;
 }

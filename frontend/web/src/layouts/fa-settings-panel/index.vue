@@ -18,6 +18,8 @@
       <FaContainerSettings />
       <!-- 基础配置 -->
       <FaBasicSettings />
+      <!-- BaaS 后端配置 -->
+      <FaBaaSSettings />
       <!-- 操作按钮 -->
       <FaSettingActions />
     </FaSettingDrawer>

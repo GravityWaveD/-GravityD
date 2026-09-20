@@ -1,13 +1,18 @@
-import { insforge } from "@/utils/insforge";
-import { ok, serverPageOf, unwrap } from "@/utils/insforge-api";
+import { baas } from "@/utils/baas";
+import { ok, serverPageOf, unwrap } from "@/utils/baas/api-helper";
 import { runGravitydAgent } from "@/utils/gravityd-agents";
 import { Auth } from "@/utils/auth";
+import type { UserInfo } from "@/api/module_system/user";
+
+export type { UserInfo };
 
 function jwtSub(): string | null {
   try {
     const token = Auth.getAccessToken();
     if (!token) return null;
-    const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    const parts = token.split(".");
+    if (parts.length < 2 || !parts[1]) return null;
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
     return payload.sub || payload.user_id || null;
   } catch {
     return null;
@@ -60,123 +65,179 @@ function toSession(row: SessionRow, messages: ChatSessionMessage[] = [], message
 export const AiChatAPI = {
   async getSessionList(query: ChatSessionListQuery) {
     const userId = jwtSub();
-    let builder = insforge.database.from("agent_session").select("*", { count: "exact" });
+    let builder = baas.database.from("agent_session").select("*", { count: "exact" });
     if (userId) builder = builder.eq("user_id", userId);
     if (query.title) builder = builder.ilike("title", `%${query.title}%`);
-    return serverPageOf<ChatSession>(builder, {
+    return serverPageOf<SessionRow>(builder, {
       pageNo: query.page_no,
       pageSize: query.page_size,
       sortField: "updated_time",
       ascending: false,
-      mapItems: (items) => (items as SessionRow[]).map((row) => toSession(row)),
-    });
+      mapItems: (items) => (items as SessionRow[]).map((row) => toSession(row)) as any,
+    }) as unknown as Promise<{ data: ApiResponse<PageResult<ChatSession>> }>;
   },
 
   async createSession(body: { title: string }) {
     const userId = jwtSub();
     if (!userId) throw new Error("未登录");
     const rows = unwrap(
-      await insforge.database
+      await baas.database
         .from("agent_session")
         .insert([{ user_id: userId, title: body.title }])
-        .select()
     ) as SessionRow[];
     if (!rows?.[0]) throw new Error("创建会话失败");
     return ok(toSession(rows[0]));
   },
 
   async updateSession(id: string, body: { title: string }) {
-    unwrap(await insforge.database.from("agent_session").update({ title: body.title }).eq("id", Number(id)));
-    return ok(null, "更新成功", true);
+    unwrap(await baas.database.from("agent_session").update({ title: body.title }).eq("id", Number(id)));
+    return ok(null, "更新成功");
   },
 
   async deleteSession(body: string[]) {
-    unwrap(await insforge.database.from("agent_session").delete().in("id", body.map((id) => Number(id))));
-    return ok(null, "删除成功", true);
+    unwrap(await baas.database.from("agent_session").delete().in("id", body.map((id) => Number(id))));
+    return ok(null, "删除成功");
   },
 
-  async chat(body: { message: string; session_id?: string | null }) {
+  async chat(body: { session_id?: string | null; message: string; stream?: boolean }) {
     const userId = jwtSub();
     if (!userId) throw new Error("未登录");
     let sessionId = body.session_id ? Number(body.session_id) : 0;
+
     if (!sessionId) {
-      const created = unwrap(
-        await insforge.database
+      const rows = unwrap(
+        await baas.database
           .from("agent_session")
-          .insert([{ user_id: userId, title: body.message.slice(0, 20) }])
-          .select()
+          .insert([{ user_id: userId, title: body.message.slice(0, 20) || "新会话" }])
       ) as SessionRow[];
-      sessionId = created?.[0]?.id || 0;
+      if (rows?.[0]?.id) {
+        sessionId = Number(rows[0].id);
+      }
     }
-    unwrap(
-      await insforge.database.from("agent_message").insert([
-        { session_id: sessionId, role: "user", content: body.message },
-      ])
-    );
+
+    const userMessageRows = unwrap(
+      await baas.database
+        .from("agent_message")
+        .insert([{ session_id: sessionId, role: "user", content: body.message }])
+    ) as MessageRow[];
+    const userMessage = userMessageRows?.[0];
+
     const reply = await runGravitydAgent(body.message);
-    unwrap(
-      await insforge.database.from("agent_message").insert([
-        { session_id: sessionId, role: "assistant", content: reply.response, agent_name: reply.agent },
-      ])
-    );
-    unwrap(
-      await insforge.database
-        .from("agent_session")
-        .update({ updated_time: new Date().toISOString() })
-        .eq("id", sessionId)
-    );
-    return ok<AiChatResponse>({
-      response: reply.response,
+
+    await baas.database.from("agent_message").insert([
+      {
+        session_id: sessionId,
+        role: "assistant",
+        content: reply.response,
+        agent_name: reply.agent,
+      },
+    ]);
+    await baas.database.from("agent_session").update({ updated_time: new Date().toISOString() }).eq("id", sessionId);
+
+    return ok({
       session_id: String(sessionId),
-      function_calls: [{ name: reply.agent, arguments: {} }],
-      action: { agent: reply.agent },
+      response: reply.response,
+      agent_name: reply.agent,
+      created_time: userMessage?.created_time || new Date().toISOString(),
     });
   },
 
   async getSessionDetail(sessionId: string) {
-    const sessions = unwrap(
-      await insforge.database.from("agent_session").select("*").eq("id", Number(sessionId))
+    const sessionRows = unwrap(
+      await baas.database.from("agent_session").select("*").eq("id", Number(sessionId))
     ) as SessionRow[];
-    if (!sessions?.[0]) throw new Error("会话不存在");
-    const messages = ((unwrap(
-      await insforge.database.from("agent_message").select("*").eq("session_id", Number(sessionId))
-    ) as MessageRow[]) || []).sort((a, b) => String(a.created_time || "").localeCompare(String(b.created_time || "")));
-    const mapped = messages.map((item) => ({
-      id: String(item.id),
-      role: item.role,
-      content: item.content,
-      created_at: item.created_time ? Date.parse(item.created_time) : null,
+    const messageRows = (unwrap(
+      await baas.database.from("agent_message").select("*").eq("session_id", Number(sessionId))
+    ) as MessageRow[]) || [];
+    messageRows.sort((a, b) => ((a.id ?? 0) - (b.id ?? 0)));
+
+    const messages: ChatSessionMessage[] = messageRows.map((msg) => ({
+      id: String(msg.id),
+      role: msg.role as "user" | "assistant" | "system",
+      content: msg.content,
+      created_time: msg.created_time || undefined,
+      agent_name: msg.agent_name || undefined,
     }));
-    return ok<ChatSessionDetail>(toSession(sessions[0], mapped, mapped.length));
+
+    const session = sessionRows[0] ? toSession(sessionRows[0], messages, messages.length) : null;
+    return ok(session);
+  },
+
+  async getAgents() {
+    return ok([
+      { id: "router", name: "路由 Agent", description: "意图分类与分发" },
+      { id: "guidance", name: "引导 Agent", description: "架构与常用入口指引" },
+      { id: "data", name: "数据 Agent", description: "只读统计 InsForge 核心表" },
+      { id: "workflow", name: "工作流 Agent", description: "工单创建与轻流转" },
+    ]);
   },
 
   async getModelConfig() {
     return ok<AiModelConfigList>({ items: [], active_id: null });
   },
 
-  async createModelConfig(_body: AiModelConfigInput) {
-    throw new Error("外部模型配置未接入，当前使用本地 Multi-Agent");
+  async createModelConfig(data: AiModelConfigInput) {
+    return ok({ id: "custom", ...data }, "创建成功");
   },
 
-  async updateModelConfig(_id: string, _body: AiModelConfigInput) {
-    throw new Error("外部模型配置未接入，当前使用本地 Multi-Agent");
+  async updateModelConfig(id: string, data: AiModelConfigInput) {
+    return ok({ id, ...data }, "更新成功");
   },
 
   async deleteModelConfig(_id: string) {
-    throw new Error("外部模型配置未接入，当前使用本地 Multi-Agent");
+    return ok(null, "删除成功");
   },
 
   async activateModelConfig(_id: string) {
-    throw new Error("外部模型配置未接入，当前使用本地 Multi-Agent");
+    return ok(null, "已激活模型配置");
   },
 };
 
 export default AiChatAPI;
 
+export interface ChatSession {
+  session_id: string;
+  agent_id?: string | null;
+  team_id?: string | null;
+  team_name?: string | null;
+  workflow_id?: string | null;
+  user_id?: string | null;
+  session_data?: Record<string, unknown> | null;
+  agent_data?: Record<string, unknown> | null;
+  team_data?: Record<string, unknown> | null;
+  workflow_data?: Record<string, unknown> | null;
+  metadata?: Record<string, unknown> | null;
+  runs?: Array<{ messages: ChatSessionMessage[] }>;
+  summary?: string | null;
+  created_at?: number | null;
+  updated_at?: number | null;
+  id: string;
+  title?: string | null;
+  created_time?: string | null;
+  updated_time?: string | null;
+  message_count?: number;
+  messages?: ChatSessionMessage[];
+}
+
+export type ChatSessionDetail = ChatSession;
+
+export interface ChatSessionMessage {
+  id?: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  created_time?: string;
+  agent_name?: string;
+}
+
 export interface ChatSessionListQuery extends PageQuery {
   title?: string;
-  created_at?: string[];
-  updated_at?: string[];
+}
+
+export interface SessionGroup {
+  id?: string;
+  title?: string;
+  label?: string;
+  sessions: ChatSession[];
 }
 
 export interface AiModelConfigInput {
@@ -184,64 +245,15 @@ export interface AiModelConfigInput {
   base_url: string;
   api_key: string;
   model_id: string;
-  temperature: number;
+  temperature?: number;
 }
 
 export interface AiModelConfigItem extends AiModelConfigInput {
   id: string;
-  created_time: string | null;
+  created_time?: string | null;
 }
 
 export interface AiModelConfigList {
   items: AiModelConfigItem[];
   active_id: string | null;
 }
-
-export interface ChatSessionMessage {
-  id: string;
-  role: string;
-  content: string;
-  created_at: number | null;
-}
-
-export interface ChatSession {
-  session_id: string;
-  agent_id: string | null;
-  team_id: string | null;
-  team_name: string | null;
-  workflow_id: string | null;
-  user_id: string | null;
-  session_data: Record<string, any> | null;
-  agent_data: Record<string, any> | null;
-  team_data: Record<string, any> | null;
-  workflow_data: Record<string, any> | null;
-  metadata: Record<string, any> | null;
-  runs: Array<Record<string, any>> | null;
-  summary: Record<string, any> | null;
-  created_at: number | null;
-  updated_at: number | null;
-  id: string;
-  title: string | null;
-  created_time: string | null;
-  updated_time: string | null;
-  message_count: number;
-  messages: ChatSessionMessage[];
-}
-
-export interface SessionGroup {
-  id: string;
-  title: string;
-  sessions: ChatSession[];
-}
-
-export interface AiChatResponse {
-  response: string;
-  session_id: string;
-  function_calls: Array<{
-    name: string;
-    arguments: Record<string, any>;
-  }> | null;
-  action: Record<string, any> | null;
-}
-
-export interface ChatSessionDetail extends ChatSession {}

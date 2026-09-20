@@ -1,21 +1,21 @@
-import { insforge } from "@/utils/insforge";
-import { ok, serverPageOf, unwrap } from "@/utils/insforge-api";
+import { baas } from "@/utils/baas";
+import { ok, serverPageOf, unwrap } from "@/utils/baas/api-helper";
 
 async function hydrateTicket(row: TicketTable): Promise<TicketTable> {
   if (!row.assigned_id) return row;
   const users = unwrap(
-    await insforge.database.from("profiles").select("id,name").eq("id", row.assigned_id)
-  ) as { id: string; name?: string }[];
+    await baas.database.from("profiles").select("id,name").eq("id", row.assigned_id)
+  ) as { id: string | number; name?: string }[];
   const user = users?.[0];
   return {
     ...row,
-    assigned_by: user ? { id: user.id as unknown as number, name: user.name } : undefined,
+    assigned_by: user ? { id: Number(user.id) || 1, name: user.name } : undefined,
   };
 }
 
 const TicketAPI = {
   async listTicket(query?: TicketPageQuery) {
-    let builder = insforge.database.from("sys_ticket").select("*", { count: "exact" });
+    let builder = baas.database.from("sys_ticket").select("*", { count: "exact" });
     if (query?.title) builder = builder.ilike("title", `%${query.title}%`);
     if (query?.ticket_type) builder = builder.eq("ticket_type", query.ticket_type);
     if (query?.assigned_id) builder = builder.eq("assigned_id", query.assigned_id);
@@ -32,14 +32,14 @@ const TicketAPI = {
   },
 
   async detailTicket(id: number) {
-    const rows = unwrap(await insforge.database.from("sys_ticket").select("*").eq("id", id)) as TicketTable[];
+    const rows = unwrap(await baas.database.from("sys_ticket").select("*").eq("id", id)) as TicketTable[];
     if (!rows?.[0]) throw new Error("工单不存在");
     return ok(await hydrateTicket(rows[0]));
   },
 
   async createTicket(body: TicketCreateForm) {
     unwrap(
-      await insforge.database.from("sys_ticket").insert([
+      await baas.database.from("sys_ticket").insert([
         {
           title: body.title,
           ticket_content: body.ticket_content,
@@ -56,7 +56,7 @@ const TicketAPI = {
 
   async updateTicket(id: number, body: TicketUpdateForm) {
     unwrap(
-      await insforge.database
+      await baas.database
         .from("sys_ticket")
         .update({
           title: body.title,
@@ -74,22 +74,22 @@ const TicketAPI = {
   },
 
   async deleteTicket(body: number[]) {
-    unwrap(await insforge.database.from("sys_ticket").delete().in("id", body));
+    unwrap(await baas.database.from("sys_ticket").delete().in("id", body));
     return ok(null, "删除成功", true);
   },
 
-  async exportTicket(_query?: TicketPageQuery) {
+  async exportTicket(_query?: TicketPageQuery): Promise<{ data: Blob }> {
     throw new Error("未迁移导出");
   },
 
   async batchTicket(body: { ids: number[]; status: number }) {
-    unwrap(await insforge.database.from("sys_ticket").update({ status: body.status }).in("id", body.ids));
+    unwrap(await baas.database.from("sys_ticket").update({ status: body.status }).in("id", body.ids));
     return ok(null, "更新成功", true);
   },
 };
 
 export async function getTicketComments(ticketId: number, params?: PageQuery) {
-  const builder = insforge.database.from("sys_ticket_comment").select("*", { count: "exact" }).eq("ticket_id", ticketId);
+  const builder = baas.database.from("sys_ticket_comment").select("*", { count: "exact" }).eq("ticket_id", ticketId);
   return serverPageOf<TicketCommentTable>(builder, {
     pageNo: params?.page_no,
     pageSize: params?.page_size,
@@ -100,10 +100,9 @@ export async function getTicketComments(ticketId: number, params?: PageQuery) {
 
 export async function createTicketComment(ticketId: number, data: TicketCommentCreateForm) {
   const inserted = unwrap(
-    await insforge.database
+    await baas.database
       .from("sys_ticket_comment")
       .insert([{ ticket_id: ticketId, content: data.content }])
-      .select()
   ) as TicketCommentTable[];
   return ok(inserted?.[0] || null, "评论成功", true);
 }
@@ -113,7 +112,7 @@ export default TicketAPI;
 export interface TicketPageQuery extends PageQuery, UserByQueryParams {
   title?: string;
   ticket_type?: string;
-  assigned_id?: string | number;
+  assigned_id?: number;
   status?: number;
 }
 
@@ -124,7 +123,7 @@ export interface TicketTable extends BaseType {
   ticket_type: string;
   images?: string;
   reply?: string;
-  assigned_id?: string | number;
+  assigned_id?: number;
   assigned_by?: CommonType;
   status?: number;
   description?: string;
@@ -146,7 +145,7 @@ export interface TicketUpdateForm {
   ticket_type?: string;
   status?: number;
   reply?: string;
-  assigned_id?: string | number;
+  assigned_id?: number;
   description?: string;
 }
 
@@ -157,7 +156,7 @@ export interface TicketForm extends BaseFormType {
   ticket_type: string;
   images?: string;
   reply?: string;
-  assigned_id?: string | number;
+  assigned_id?: number;
   status?: number;
   description?: string;
 }
